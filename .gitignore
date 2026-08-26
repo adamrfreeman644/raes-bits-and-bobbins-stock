@@ -1,0 +1,7 @@
+data/*.db
+photos/*
+backups/*
+__pycache__/
+*.pyc
+.env
+!.gitkeep
