@@ -1,0 +1,15 @@
+services:
+  inventory-manager:
+    build: .
+    container_name: inventory-manager
+    ports:
+      - "8080:8080"
+    environment:
+      - SECRET_KEY=change-this-before-production
+      - DATA_DIR=/data
+      - PHOTO_DIR=/photos
+    volumes:
+      - ./data:/data
+      - ./photos:/photos
+      - ./backups:/backups
+    restart: unless-stopped
