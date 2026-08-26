@@ -23,10 +23,15 @@
       <div class="barcode-list">
         {% for b in barcodes %}
         <div class="barcode-row">
-          <form class="barcode-edit-form" method="post" action="{{ url_for('edit_item_barcode', barcode_id=b.id) }}"><input name="barcode" value="{{ b.barcode }}"><button class="btn" type="submit">Save</button></form>
-          <span class="status {{ b.state|lower }}">{{ b.state }}</span>
-          <form method="post" action="{{ url_for('toggle_item_barcode', barcode_id=b.id) }}"><button class="btn" type="submit">{{ 'Mark Sold' if b.state == 'Available' else 'Restore' }}</button></form>
-          <form method="post" action="{{ url_for('delete_item_barcode', barcode_id=b.id) }}" onsubmit="return confirm('Remove this physical barcode from the product?')"><button class="btn danger" type="submit">Remove</button></form>
+          <form class="barcode-edit-form" method="post" action="{{ url_for('edit_item_barcode', barcode_id=b.id) }}">
+            <input name="barcode" value="{{ b.barcode }}" aria-label="Barcode">
+            <button class="btn" type="submit">Save</button>
+          </form>
+          <div class="barcode-row-actions">
+            <span class="status {{ b.state|lower }}">{{ b.state }}</span>
+            <form method="post" action="{{ url_for('toggle_item_barcode', barcode_id=b.id) }}"><button class="btn" type="submit">{{ 'Mark Sold' if b.state == 'Available' else 'Restore' }}</button></form>
+            <form method="post" action="{{ url_for('delete_item_barcode', barcode_id=b.id) }}" onsubmit="return confirm('Remove this physical barcode from the product?')"><button class="btn danger" type="submit">Remove</button></form>
+          </div>
         </div>
         {% else %}<div class="empty-current">No item barcodes assigned.</div>{% endfor %}
       </div>
