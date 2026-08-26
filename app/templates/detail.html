@@ -3,7 +3,10 @@
 {% block content %}
 <div class="page-head detail-page-head">
   <a class="btn" href="{{ url_for('index') }}">← Inventory</a>
-  <a class="btn" href="{{ url_for('edit_product', product_id=product.id) }}">Edit</a>
+  <div class="head-actions">
+    <form method="post" action="{{ url_for('duplicate_product', product_id=product.id) }}"><button class="btn" type="submit">Duplicate</button></form>
+    <a class="btn" href="{{ url_for('edit_product', product_id=product.id) }}">Edit</a>
+  </div>
 </div>
 
 <div class="detail-layout">
@@ -40,7 +43,7 @@
       <dt>Main colour</dt><dd>{{ product.main_colour or '—' }}</dd>
       <dt>Secondary colour</dt><dd>{{ product.secondary_colour or '—' }}</dd>
       <dt>Pattern</dt><dd>{{ product.pattern or '—' }}</dd>
-      <dt>Barcode / ID</dt><dd class="barcode">{{ product.inventory_id }}</dd>
+      <dt>Barcode</dt><dd class="barcode">{{ product.inventory_id }}</dd>
       <dt>Date added</dt><dd>{{ product.date_added[:10] }}</dd>
       {% if product.date_sold %}<dt>Date sold</dt><dd>{{ product.date_sold[:10] }}</dd>{% endif %}
       {% if product.notes %}<dt>Notes</dt><dd>{{ product.notes }}</dd>{% endif %}
