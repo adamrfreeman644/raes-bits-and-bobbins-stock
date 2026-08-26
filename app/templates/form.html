@@ -10,9 +10,42 @@
 <div class="two-col"><label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label><label>Quantity<input name="quantity" inputmode="numeric" type="number" min="0" step="1" value="{{ product.quantity if product else 1 }}"></label></div>
 <label>Status<select name="status"><option value="Available" {{ 'selected' if not product or product.status == 'Available' }}>Available</option><option value="Sold" {{ 'selected' if product and product.status == 'Sold' }}>Sold</option></select></label>
 <label>Notes<textarea name="notes" rows="3" placeholder="Optional internal notes">{{ product.notes if product else '' }}</textarea></label>
-{% if photos %}<h2>Current photos</h2><div class="photo-grid">{% for photo in photos %}<div class="photo-edit"><img src="{{ url_for('photo_file', filename=photo.filename) }}"><button class="danger-mini" formmethod="post" formaction="{{ url_for('delete_photo', photo_id=photo.id) }}" type="submit" onclick="return confirm('Delete this photo?')">Remove</button></div>{% endfor %}</div>{% endif %}
-<h2>Photos <small>up to 5 total</small></h2><div class="photo-inputs">{% for i in range(1,6) %}<label class="photo-picker">+ Photo {{ i }}<input type="file" name="photo{{ i }}" accept="image/*" capture="environment"></label>{% endfor %}</div>
+<h2>Photos <small>up to 5 total</small></h2>
+<div class="photo-slots">
+  {% for i in range(1,6) %}
+    {% set existing = photos[i-1] if photos and photos|length >= i else None %}
+    <div class="photo-slot {{ 'filled' if existing }}" data-slot="{{ i }}">
+      {% if existing %}
+        <div class="photo-slot-preview"><img src="{{ url_for('photo_file', filename=existing.filename) }}" alt="Photo {{ i }}"></div>
+        <button class="danger-mini" formmethod="post" formaction="{{ url_for('delete_photo', photo_id=existing.id) }}" type="submit" onclick="return confirm('Delete this photo?')">Remove</button>
+      {% else %}
+        <label class="photo-picker-slot" for="photo{{ i }}">
+          <span class="photo-slot-label">+ Photo {{ i }}</span>
+          <img class="photo-slot-new-preview" alt="Selected photo {{ i }}">
+        </label>
+        <input class="photo-file-input" id="photo{{ i }}" type="file" name="photo{{ i }}" accept="image/*" capture="environment" data-preview-slot="{{ i }}">
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
 <div class="form-actions"><a class="btn" href="{{ url_for('index') }}">Cancel</a><button class="btn primary big" type="submit">Save Product</button></div>
 </form>
 {% endblock %}
-{% block scripts %}<script>{% if not product %}window.addEventListener('load',()=>document.getElementById('item').focus());{% endif %}</script>{% endblock %}
+{% block scripts %}
+<script>
+{% if not product %}window.addEventListener('load',()=>document.getElementById('item').focus());{% endif %}
+document.querySelectorAll('.photo-file-input').forEach(input=>{
+  input.addEventListener('change',()=>{
+    const file=input.files && input.files[0];
+    if(!file) return;
+    const slot=input.closest('.photo-slot');
+    const img=slot.querySelector('.photo-slot-new-preview');
+    const label=slot.querySelector('.photo-slot-label');
+    img.src=URL.createObjectURL(file);
+    img.style.display='block';
+    label.style.display='none';
+    slot.classList.add('pending');
+  });
+});
+</script>
+{% endblock %}
