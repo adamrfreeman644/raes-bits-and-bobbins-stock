@@ -16,6 +16,7 @@ while true; do
     echo "running" > "$STATUS"
     TS=$(date '+%Y%m%d-%H%M%S')
     log "Update requested"
+
     if [ -f "$PROJECT/data/inventory.db" ]; then
       if cp "$PROJECT/data/inventory.db" "$PROJECT/backups/inventory-$TS.db"; then
         log "Database backup created: inventory-$TS.db"
@@ -28,7 +29,14 @@ while true; do
     else
       log "No database file found yet; continuing"
     fi
-    cd "$PROJECT" || { log "ERROR: cannot enter project directory"; echo "failed" > "$STATUS"; sleep 2; continue; }
+
+    cd "$PROJECT" || {
+      log "ERROR: cannot enter project directory"
+      echo "failed" > "$STATUS"
+      sleep 2
+      continue
+    }
+
     if git fetch origin main >>"$LOG" 2>&1 && git reset --hard origin/main >>"$LOG" 2>&1; then
       log "GitHub files updated"
     else
@@ -37,11 +45,15 @@ while true; do
       sleep 2
       continue
     fi
-    if docker compose -f "$PROJECT/docker-compose.yml" up -d --build --remove-orphans >>"$LOG" 2>&1; then
-      log "Docker rebuild/restart completed"
+
+    # IMPORTANT: do not recreate inventory-updater from inside itself.
+    # Only rebuild/restart the application service here. The updater stays
+    # running, avoiding Docker container-name conflicts during an update.
+    if docker compose -f "$PROJECT/docker-compose.yml" up -d --build --no-deps inventory-manager >>"$LOG" 2>&1; then
+      log "Inventory Manager rebuild/restart completed"
       echo "complete" > "$STATUS"
     else
-      log "ERROR: Docker rebuild/restart failed"
+      log "ERROR: Inventory Manager rebuild/restart failed"
       echo "failed" > "$STATUS"
     fi
   fi
