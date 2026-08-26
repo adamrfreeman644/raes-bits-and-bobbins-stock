@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}PayPal POS{% endblock %}
+{% block content %}
+<div class="page-head"><a class="btn" href="{{ url_for('index') }}">← Inventory</a><h1>PayPal POS</h1></div>
+<div class="detail-layout">
+<section class="product-info">
+  <h2>Export products</h2>
+  <p>Download a PayPal POS-friendly CSV containing product name, price, barcode/SKU and current stock quantity.</p>
+  <p><strong>Barcode and SKU both use the same Rae's Stock ID</strong> (for example <code>INV-0001</code>).</p>
+  <a class="btn primary big" href="{{ url_for('paypal_export') }}">Export PayPal CSV</a>
+</section>
+<section class="product-info">
+  <h2>Import stock back</h2>
+  <p>Upload a CSV exported from PayPal POS after selling items. Rae's Stock will match products by Barcode or SKU and update their quantities.</p>
+  <p>Recognised quantity columns include <strong>In Stock</strong>, <strong>Stock</strong>, <strong>Quantity</strong> and <strong>Qty</strong>. A quantity of 0 marks the product Sold.</p>
+  <form method="post" action="{{ url_for('paypal_import') }}" enctype="multipart/form-data">
+    <label>PayPal stock CSV<input type="file" name="file" accept=".csv,text/csv" required></label>
+    <button class="btn primary big" type="submit">Import Quantities</button>
+  </form>
+</section>
+</div>
+<div class="empty"><h2>Current limitation</h2><p>This release uses CSV exchange rather than a direct PayPal API connection. That keeps the first integration simple and gives us something real to test with the PayPal POS export format.</p></div>
+{% endblock %}
