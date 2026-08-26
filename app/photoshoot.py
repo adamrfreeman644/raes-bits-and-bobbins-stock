@@ -44,19 +44,22 @@ def init_tables():
 
 
 def exif_taken_at(file_storage):
-    file_storage.stream.seek(0)
-    with Image.open(file_storage.stream) as img:
-        exif = img.getexif()
-        if not exif:
-            return None
-        tags = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
-        raw = tags.get('DateTimeOriginal') or tags.get('DateTimeDigitized') or tags.get('DateTime')
-        if not raw:
-            return None
-        try:
-            return datetime.strptime(str(raw), '%Y:%m:%d %H:%M:%S')
-        except ValueError:
-            return None
+    try:
+        file_storage.stream.seek(0)
+        with Image.open(file_storage.stream) as img:
+            exif = img.getexif()
+            if not exif:
+                return None
+            tags = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
+            raw = tags.get('DateTimeOriginal') or tags.get('DateTimeDigitized') or tags.get('DateTime')
+            if not raw:
+                return None
+            try:
+                return datetime.strptime(str(raw), '%Y:%m:%d %H:%M:%S')
+            except ValueError:
+                return None
+    except Exception:
+        return None
 
 
 def save_photo(product_id, file_storage, sort_order):
@@ -154,7 +157,7 @@ def upload_batch(session_id):
         for f in files:
             taken = exif_taken_at(f)
             if not taken:
-                unmatched.append({'name': f.filename, 'reason': 'No EXIF Date Taken timestamp'})
+                unmatched.append({'name': f.filename, 'reason': 'No readable EXIF Date Taken timestamp'})
                 continue
 
             target = None
