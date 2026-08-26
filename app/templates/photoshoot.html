@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Photo Shoot{% endblock %}
+{% block content %}
+<section class="shoot-shell">
+  <div class="page-head"><div><div class="eyebrow">Batch workflow</div><h1>Photo Shoot</h1><p class="muted">Scan each product as you move through the shoot. Upload the whole batch afterwards and photos will be matched by Date Taken.</p></div></div>
+
+  {% if session %}
+  <section class="shoot-live">
+    <div class="shoot-live-head"><div><span class="live-dot"></span> Shoot active</div><strong>Started {{ session.started_at[11:19] }}</strong></div>
+    <form class="scan-form" method="post" action="{{ url_for('photoshoot.scan_product') }}">
+      <label>Scan next barcode
+        <input id="shoot-barcode" name="barcode" autocomplete="off" autocapitalize="characters" placeholder="Scan INV-0001…">
+      </label>
+      <button class="btn primary big" type="submit">Set Current Product</button>
+    </form>
+
+    {% if current %}
+    <div class="current-product">
+      <div class="current-label">CURRENT PRODUCT</div>
+      <div class="current-code">{{ current.inventory_id }}</div>
+      <div class="current-name">{{ current.item }}</div>
+      <div class="current-time">Photo window started {{ current.scanned_at[11:19] }}</div>
+    </div>
+    {% else %}
+    <div class="current-product empty-current">Scan the first product to begin the first photo window.</div>
+    {% endif %}
+
+    {% if scans %}
+    <div class="scan-history">
+      <h2>Scan markers</h2>
+      {% for scan in scans %}<div class="scan-row"><strong>{{ scan.inventory_id }}</strong><span>{{ scan.item }}</span><time>{{ scan.scanned_at[11:19] }}</time></div>{% endfor %}
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('photoshoot.end_session') }}"><button class="btn danger big full" type="submit">End Photo Shoot</button></form>
+  </section>
+  {% else %}
+  <section class="shoot-start-card">
+    <h2>Ready for a new shoot</h2>
+    <p>Start the session, then scan products one after another as quickly as needed. Every scan creates a timestamp marker.</p>
+    <form method="post" action="{{ url_for('photoshoot.start_session') }}"><button class="btn primary big" type="submit">Start Photo Shoot</button></form>
+  </section>
+  {% endif %}
+
+  {% if results %}
+  <section class="shoot-results">
+    <h2>Batch import result</h2>
+    <div class="summary-cards"><div><strong>{{ results.assigned|length }}</strong><span>assigned</span></div><div><strong>{{ results.unmatched|length }}</strong><span>need review</span></div></div>
+    {% if results.assigned %}<h3>Assigned photos</h3><div class="result-list">{% for r in results.assigned %}<div class="result-row"><span>{{ r.name }}</span><strong>{{ r.inventory_id }} · {{ r.item }}</strong><time>{{ r.taken.strftime('%H:%M:%S') }}</time></div>{% endfor %}</div>{% endif %}
+    {% if results.unmatched %}<h3>Could not assign</h3><div class="result-list">{% for r in results.unmatched %}<div class="result-row warning"><span>{{ r.name }}</span><strong>{{ r.reason }}</strong></div>{% endfor %}</div>{% endif %}
+  </section>
+  {% endif %}
+
+  {% if recent %}
+  <section class="shoot-sessions">
+    <h2>Recent shoots</h2>
+    {% for s in recent %}
+    <div class="session-row">
+      <div><strong>Shoot #{{ s.id }}</strong><span>{{ s.started_at[:19].replace('T',' ') }}</span></div>
+      <span class="status {{ 'available' if s.status == 'Active' else 'sold' }}">{{ s.status }}</span>
+      {% if s.status != 'Active' %}
+      <form method="post" action="{{ url_for('photoshoot.upload_batch', session_id=s.id) }}" enctype="multipart/form-data" class="batch-upload">
+        <label class="btn">Choose photo batch<input type="file" name="photos" accept="image/*" multiple required></label>
+        <button class="btn primary" type="submit">Auto Assign</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
+{% if session %}<script>window.addEventListener('load',()=>{const e=document.getElementById('shoot-barcode');if(e){e.focus();e.select();}});</script>{% endif %}
+{% endblock %}
