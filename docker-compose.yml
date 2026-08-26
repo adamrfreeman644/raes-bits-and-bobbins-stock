@@ -8,8 +8,21 @@ services:
       - SECRET_KEY=change-this-before-production
       - DATA_DIR=/data
       - PHOTO_DIR=/photos
+      - UPDATER_DIR=/updater
     volumes:
       - ./data:/data
       - ./photos:/photos
       - ./backups:/backups
+      - ./updater-state:/updater
+    restart: unless-stopped
+
+  inventory-updater:
+    image: docker:27-cli
+    container_name: inventory-updater
+    working_dir: /project
+    command: ["sh", "-c", "apk add --no-cache git >/dev/null 2>&1 && sh /project/updater.sh"]
+    volumes:
+      - ./:/project
+      - ./updater-state:/updater
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
