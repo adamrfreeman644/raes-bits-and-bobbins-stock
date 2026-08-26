@@ -83,8 +83,9 @@ def photo_shoot():
         scans = []
         current = None
         if session:
-            scans = conn.execute('''SELECT s.*, p.inventory_id, p.item FROM photo_shoot_scans s
-                                    JOIN products p ON p.id=s.product_id
+            scans = conn.execute('''SELECT s.*, p.item,
+                                    (SELECT ib.barcode FROM item_barcodes ib WHERE ib.product_id=p.id ORDER BY ib.id LIMIT 1) AS inventory_id
+                                    FROM photo_shoot_scans s JOIN products p ON p.id=s.product_id
                                     WHERE s.session_id=? ORDER BY s.scanned_at DESC''', (session['id'],)).fetchall()
             current = scans[0] if scans else None
         recent = conn.execute("SELECT * FROM photo_shoot_sessions ORDER BY id DESC LIMIT 8").fetchall()
@@ -98,14 +99,14 @@ def start_session():
     with db() as conn:
         conn.execute("UPDATE photo_shoot_sessions SET status='Ended', ended_at=COALESCE(ended_at,?) WHERE status='Active'", (now,))
         conn.execute("INSERT INTO photo_shoot_sessions(started_at,status) VALUES(?, 'Active')", (now,))
-    flash('Photo shoot started. Scan the first product.', 'success')
+    flash('Photo shoot started. Scan the first physical item barcode.', 'success')
     return redirect(url_for('photoshoot.photo_shoot'))
 
 
 @bp.post('/scan')
 def scan_product():
     init_tables()
-    code = request.form.get('barcode', '').strip().upper()
+    code = request.form.get('barcode', '').strip()
     if not code:
         return redirect(url_for('photoshoot.photo_shoot'))
     with db() as conn:
@@ -113,7 +114,8 @@ def scan_product():
         if not session:
             flash('Start a photo shoot first.', 'error')
             return redirect(url_for('photoshoot.photo_shoot'))
-        product = conn.execute('SELECT * FROM products WHERE UPPER(inventory_id)=? OR UPPER(barcode)=?', (code, code)).fetchone()
+        product = conn.execute('''SELECT p.* FROM item_barcodes ib JOIN products p ON p.id=ib.product_id
+                                  WHERE ib.barcode=? LIMIT 1''', (code,)).fetchone()
         if not product:
             flash(f'Barcode {code} was not found.', 'error')
             return redirect(url_for('photoshoot.photo_shoot'))
@@ -142,8 +144,9 @@ def upload_batch(session_id):
 
     with db() as conn:
         session = conn.execute('SELECT * FROM photo_shoot_sessions WHERE id=?', (session_id,)).fetchone()
-        scans = conn.execute('''SELECT s.*, p.inventory_id, p.item FROM photo_shoot_scans s
-                                JOIN products p ON p.id=s.product_id
+        scans = conn.execute('''SELECT s.*, p.item,
+                                (SELECT ib.barcode FROM item_barcodes ib WHERE ib.product_id=p.id ORDER BY ib.id LIMIT 1) AS inventory_id
+                                FROM photo_shoot_scans s JOIN products p ON p.id=s.product_id
                                 WHERE s.session_id=? ORDER BY s.scanned_at''', (session_id,)).fetchall()
         if not session or not scans:
             flash('That photo shoot has no scan markers.', 'error')
@@ -153,13 +156,11 @@ def upload_batch(session_id):
         session_end = datetime.fromisoformat(session['ended_at']) if session['ended_at'] else datetime.now()
         assigned = []
         unmatched = []
-
         for f in files:
             taken = exif_taken_at(f)
             if not taken:
                 unmatched.append({'name': f.filename, 'reason': 'No readable EXIF Date Taken timestamp'})
                 continue
-
             target = None
             for i, (start, scan) in enumerate(markers):
                 end = markers[i + 1][0] if i + 1 < len(markers) else session_end
@@ -169,14 +170,12 @@ def upload_batch(session_id):
             if not target:
                 unmatched.append({'name': f.filename, 'reason': f'Outside scan window ({taken})'})
                 continue
-
             existing = conn.execute('SELECT COALESCE(MAX(sort_order),0) AS n FROM photos WHERE product_id=?', (target['product_id'],)).fetchone()['n']
             filename = save_photo(target['product_id'], f, existing + 1)
             if not filename:
                 unmatched.append({'name': f.filename, 'reason': 'Unsupported image type'})
                 continue
-            conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)',
-                         (target['product_id'], filename, existing + 1))
+            conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)', (target['product_id'], filename, existing + 1))
             assigned.append({'name': f.filename, 'taken': taken, 'inventory_id': target['inventory_id'], 'item': target['item']})
 
     with db() as conn:
