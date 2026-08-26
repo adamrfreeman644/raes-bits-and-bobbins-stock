@@ -83,12 +83,33 @@ while true; do
       continue
     fi
 
-    if docker compose -f "$PROJECT/docker-compose.yml" up -d --build --no-deps inventory-manager >>"$LOG" 2>&1; then
-      log "Inventory Manager rebuild/restart completed"
+    # Build first while the current app keeps running.
+    if ! docker compose -f "$PROJECT/docker-compose.yml" build inventory-manager >>"$LOG" 2>&1; then
+      log "ERROR: Inventory Manager image build failed"
+      echo "failed: build" > "$STATUS"
+      sleep 2
+      continue
+    fi
+    log "Inventory Manager image built successfully"
+
+    # Replace only the app container. Explicit removal avoids Compose project-name
+    # conflicts when the stack was originally created from a different working directory.
+    if docker ps -a --format '{{.Names}}' | grep -qx 'inventory-manager'; then
+      log "Removing previous inventory-manager container"
+      if ! docker rm -f inventory-manager >>"$LOG" 2>&1; then
+        log "ERROR: could not remove previous inventory-manager container"
+        echo "failed: remove old container" > "$STATUS"
+        sleep 2
+        continue
+      fi
+    fi
+
+    if docker compose -f "$PROJECT/docker-compose.yml" up -d --no-deps inventory-manager >>"$LOG" 2>&1; then
+      log "Inventory Manager replacement container started"
       echo "complete" > "$STATUS"
     else
-      log "ERROR: Inventory Manager rebuild/restart failed"
-      echo "failed: rebuild" > "$STATUS"
+      log "ERROR: Inventory Manager replacement container failed to start"
+      echo "failed: start replacement" > "$STATUS"
     fi
   fi
   sleep 5
