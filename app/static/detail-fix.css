@@ -1,0 +1,35 @@
+.product-info{min-width:0}
+.barcode-add-form{grid-template-columns:minmax(0,1fr) auto}
+.barcode-add-form input{min-width:0}
+.barcode-list{gap:10px}
+.barcode-row{display:grid;grid-template-columns:1fr;gap:10px;padding:12px;border-radius:12px;min-width:0}
+.barcode-edit-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-width:0}
+.barcode-edit-form input{min-width:0}
+.barcode-row-actions{display:grid;grid-template-columns:auto 1fr 1fr;gap:8px;align-items:center}
+.barcode-row-actions form{margin:0}
+.barcode-row-actions .btn{width:100%;white-space:nowrap}
+.barcode-row-actions .status{justify-self:start}
+
+@media(max-width:1000px){
+  .detail-layout{grid-template-columns:minmax(0,1fr) minmax(360px,.9fr)}
+}
+
+@media(max-width:820px){
+  .detail-layout{grid-template-columns:1fr}
+  .gallery-panel,.product-info{width:100%}
+  .hero-photo{aspect-ratio:16/10}
+}
+
+@media(max-width:760px){
+  .barcode-add-form{grid-template-columns:1fr}
+  .barcode-add-form .btn{width:100%}
+  .barcode-row-actions{grid-template-columns:auto 1fr 1fr}
+}
+
+@media(max-width:480px){
+  .barcode-manager-head{flex-direction:column}
+  .barcode-edit-form{grid-template-columns:minmax(0,1fr) auto}
+  .barcode-row-actions{grid-template-columns:1fr 1fr}
+  .barcode-row-actions .status{grid-column:1/-1;justify-self:start}
+  .barcode-row-actions .btn{min-height:44px}
+}
