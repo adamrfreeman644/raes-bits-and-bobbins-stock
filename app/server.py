@@ -14,7 +14,7 @@ DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR / 'data'))
 PHOTO_DIR = Path(os.environ.get('PHOTO_DIR', BASE_DIR / 'photos'))
 UPDATER_DIR = Path(os.environ.get('UPDATER_DIR', BASE_DIR / 'updater-state'))
 DB_PATH = DATA_DIR / 'inventory.db'
-VERSION = '0.0.7'
+VERSION = '0.0.8'
 LATEST_URL = 'https://raw.githubusercontent.com/adamrfreeman644/raes-bits-and-bobbins-stock/main/VERSION'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'}
 MAX_PHOTOS = 5
@@ -36,6 +36,7 @@ except ImportError:
 def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys=ON')
     return conn
 
 
@@ -51,7 +52,7 @@ def init_db():
             pattern TEXT,
             price_pence INTEGER NOT NULL DEFAULT 0,
             barcode TEXT UNIQUE,
-            quantity INTEGER NOT NULL DEFAULT 1,
+            quantity INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'Available' CHECK(status IN ('Available','Sold')),
             date_added TEXT NOT NULL,
             date_sold TEXT,
@@ -64,14 +65,49 @@ def init_db():
             sort_order INTEGER NOT NULL DEFAULT 1,
             FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS item_barcodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER NOT NULL,
+            barcode TEXT NOT NULL UNIQUE,
+            state TEXT NOT NULL DEFAULT 'Available' CHECK(state IN ('Available','Sold')),
+            added_at TEXT NOT NULL,
+            sold_at TEXT,
+            FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_item_barcodes_product ON item_barcodes(product_id);
+        CREATE INDEX IF NOT EXISTS idx_item_barcodes_barcode ON item_barcodes(barcode);
         ''')
         columns = {r['name'] for r in conn.execute('PRAGMA table_info(products)').fetchall()}
         if 'quantity' not in columns:
-            conn.execute('ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1')
-        # Preserve existing IDs, but from now on the physical barcode is the single
-        # user-facing product identifier and both legacy columns stay in sync.
-        conn.execute('UPDATE products SET barcode=inventory_id WHERE barcode IS NULL AND inventory_id IS NOT NULL')
-        conn.execute('UPDATE products SET inventory_id=barcode WHERE inventory_id IS NULL AND barcode IS NOT NULL')
+            conn.execute('ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 0')
+
+        # Migrate each legacy product barcode into the per-item barcode table once.
+        legacy = conn.execute('SELECT id, COALESCE(NULLIF(barcode,\'\'), NULLIF(inventory_id,\'\')) AS code, status FROM products').fetchall()
+        for row in legacy:
+            if row['code']:
+                exists = conn.execute('SELECT 1 FROM item_barcodes WHERE barcode=?', (row['code'],)).fetchone()
+                if not exists:
+                    state = 'Sold' if row['status'] == 'Sold' else 'Available'
+                    conn.execute('INSERT INTO item_barcodes(product_id,barcode,state,added_at,sold_at) VALUES(?,?,?,?,?)',
+                                 (row['id'], row['code'], state, datetime.now().isoformat(timespec='seconds'),
+                                  datetime.now().isoformat(timespec='seconds') if state == 'Sold' else None))
+        sync_all_products(conn)
+
+
+def sync_product(conn, product_id):
+    row = conn.execute('''SELECT COUNT(*) total,
+                                 SUM(CASE WHEN state='Available' THEN 1 ELSE 0 END) available
+                          FROM item_barcodes WHERE product_id=?''', (product_id,)).fetchone()
+    available = int(row['available'] or 0)
+    status = 'Available' if available > 0 else 'Sold'
+    date_sold = None if available > 0 else datetime.now().isoformat(timespec='seconds')
+    conn.execute('UPDATE products SET quantity=?,status=?,date_sold=? WHERE id=?',
+                 (available, status, date_sold, product_id))
+
+
+def sync_all_products(conn):
+    for row in conn.execute('SELECT id FROM products').fetchall():
+        sync_product(conn, row['id'])
 
 
 def allowed_file(filename):
@@ -94,9 +130,10 @@ def save_uploaded_photos(product_id, files, start_order=1):
 def product_with_photos(conn, product_id):
     product = conn.execute('SELECT * FROM products WHERE id=?', (product_id,)).fetchone()
     if not product:
-        return None, []
+        return None, [], []
     photos = conn.execute('SELECT * FROM photos WHERE product_id=? ORDER BY sort_order,id', (product_id,)).fetchall()
-    return product, photos
+    barcodes = conn.execute('SELECT * FROM item_barcodes WHERE product_id=? ORDER BY id', (product_id,)).fetchall()
+    return product, photos, barcodes
 
 
 def latest_version():
@@ -141,13 +178,16 @@ def index():
     view = request.args.get('view', 'cards')
     q = request.args.get('q', '').strip()
     status = request.args.get('status', '').strip()
-    sql = '''SELECT p.*, ph.filename AS main_photo FROM products p
+    sql = '''SELECT p.*, ph.filename AS main_photo,
+                    (SELECT MIN(ib.barcode) FROM item_barcodes ib WHERE ib.product_id=p.id) AS first_barcode
+             FROM products p
              LEFT JOIN photos ph ON ph.id=(SELECT id FROM photos WHERE product_id=p.id ORDER BY sort_order,id LIMIT 1)
              WHERE 1=1'''
     params = []
     if q:
         like = f'%{q}%'
-        sql += ' AND (p.item LIKE ? OR p.main_colour LIKE ? OR p.secondary_colour LIKE ? OR p.pattern LIKE ? OR p.inventory_id LIKE ?)'
+        sql += ''' AND (p.item LIKE ? OR p.main_colour LIKE ? OR p.secondary_colour LIKE ? OR p.pattern LIKE ?
+                  OR EXISTS(SELECT 1 FROM item_barcodes ib WHERE ib.product_id=p.id AND ib.barcode LIKE ?))'''
         params.extend([like] * 5)
     if status in ('Available', 'Sold'):
         sql += ' AND p.status=?'
@@ -168,100 +208,69 @@ def new_product():
     barcode = request.form.get('barcode', '').strip()
     item = request.form.get('item', '').strip()
     if not barcode:
-        flash('Scan or enter the physical barcode first.', 'error')
+        flash('Scan or enter the first physical item barcode.', 'error')
         return render_template('form.html', product=None, photos=[], duplicate_mode=False)
     if not item:
         flash('Item is required.', 'error')
         return render_template('form.html', product=None, photos=[], duplicate_mode=False)
-
     try:
         price_pence = round(float(request.form.get('price', '0') or 0) * 100)
-        quantity = max(0, int(request.form.get('quantity', '1') or 1))
     except ValueError:
-        flash('Price and quantity must be valid numbers.', 'error')
+        flash('Price must be a valid number.', 'error')
         return render_template('form.html', product=None, photos=[], duplicate_mode=False)
 
-    status = request.form.get('status', 'Available')
-    if quantity == 0:
-        status = 'Sold'
     files = [request.files.get(f'photo{i}') for i in range(1, MAX_PHOTOS + 1)]
-
     try:
         with db() as conn:
             cur = conn.execute('''INSERT INTO products
                 (inventory_id,item,main_colour,secondary_colour,pattern,price_pence,barcode,quantity,status,date_added,date_sold,notes)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''', (
-                barcode, item, request.form.get('main_colour', '').strip(),
-                request.form.get('secondary_colour', '').strip(), request.form.get('pattern', '').strip(),
-                price_pence, barcode, quantity, status, datetime.now().isoformat(timespec='seconds'),
-                datetime.now().isoformat(timespec='seconds') if status == 'Sold' else None,
+                VALUES (NULL,?,?,?,?,?,NULL,0,'Available',?,NULL,?)''', (
+                item, request.form.get('main_colour', '').strip(), request.form.get('secondary_colour', '').strip(),
+                request.form.get('pattern', '').strip(), price_pence, datetime.now().isoformat(timespec='seconds'),
                 request.form.get('notes', '').strip()))
             product_id = cur.lastrowid
+            conn.execute('INSERT INTO item_barcodes(product_id,barcode,state,added_at) VALUES(?,?,\'Available\',?)',
+                         (product_id, barcode, datetime.now().isoformat(timespec='seconds')))
+            sync_product(conn, product_id)
             for filename, order in save_uploaded_photos(product_id, files):
-                conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)',
-                             (product_id, filename, order))
+                conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)', (product_id, filename, order))
     except sqlite3.IntegrityError:
-        flash(f'Barcode {barcode} is already assigned to another product.', 'error')
+        flash(f'Barcode {barcode} is already assigned to another physical item.', 'error')
         return render_template('form.html', product=None, photos=[], duplicate_mode=False)
-
     return redirect(url_for('product_detail', product_id=product_id))
 
 
 @app.route('/product/<int:product_id>')
 def product_detail(product_id):
     with db() as conn:
-        product, photos = product_with_photos(conn, product_id)
+        product, photos, barcodes = product_with_photos(conn, product_id)
     if not product:
         abort(404)
-    return render_template('detail.html', product=product, photos=photos)
+    return render_template('detail.html', product=product, photos=photos, barcodes=barcodes)
 
 
 @app.route('/product/<int:product_id>/edit', methods=['GET', 'POST'])
 def edit_product(product_id):
     with db() as conn:
-        product, photos = product_with_photos(conn, product_id)
+        product, photos, barcodes = product_with_photos(conn, product_id)
     if not product:
         abort(404)
     if request.method == 'GET':
         return render_template('form.html', product=product, photos=photos, duplicate_mode=False)
-
-    barcode = request.form.get('barcode', '').strip()
-    if not barcode:
-        flash('Barcode is required.', 'error')
-        return render_template('form.html', product=product, photos=photos, duplicate_mode=False)
-
     try:
         price_pence = round(float(request.form.get('price', '0') or 0) * 100)
-        quantity = max(0, int(request.form.get('quantity', product['quantity']) or 0))
     except ValueError:
-        flash('Price and quantity must be valid numbers.', 'error')
+        flash('Price must be a valid number.', 'error')
         return render_template('form.html', product=product, photos=photos, duplicate_mode=False)
-
-    status = request.form.get('status', 'Available')
-    if quantity == 0:
-        status = 'Sold'
-    date_sold = product['date_sold']
-    if status == 'Sold' and product['status'] != 'Sold':
-        date_sold = datetime.now().isoformat(timespec='seconds')
-    elif status == 'Available':
-        date_sold = None
-
-    try:
-        with db() as conn:
-            conn.execute('''UPDATE products SET inventory_id=?,barcode=?,item=?,main_colour=?,secondary_colour=?,pattern=?,
-                            price_pence=?,quantity=?,status=?,date_sold=?,notes=? WHERE id=?''', (
-                barcode, barcode, request.form.get('item', '').strip(), request.form.get('main_colour', '').strip(),
-                request.form.get('secondary_colour', '').strip(), request.form.get('pattern', '').strip(),
-                price_pence, quantity, status, date_sold, request.form.get('notes', '').strip(), product_id))
-            existing = conn.execute('SELECT COUNT(*) c FROM photos WHERE product_id=?', (product_id,)).fetchone()['c']
-            files = [request.files.get(f'photo{i}') for i in range(1, MAX_PHOTOS + 1)][:max(0, MAX_PHOTOS - existing)]
-            for filename, order in save_uploaded_photos(product_id, files, existing + 1):
-                conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)',
-                             (product_id, filename, order))
-    except sqlite3.IntegrityError:
-        flash(f'Barcode {barcode} is already assigned to another product.', 'error')
-        return render_template('form.html', product=product, photos=photos, duplicate_mode=False)
-
+    with db() as conn:
+        conn.execute('''UPDATE products SET item=?,main_colour=?,secondary_colour=?,pattern=?,price_pence=?,notes=? WHERE id=?''', (
+            request.form.get('item', '').strip(), request.form.get('main_colour', '').strip(),
+            request.form.get('secondary_colour', '').strip(), request.form.get('pattern', '').strip(),
+            price_pence, request.form.get('notes', '').strip(), product_id))
+        existing = conn.execute('SELECT COUNT(*) c FROM photos WHERE product_id=?', (product_id,)).fetchone()['c']
+        files = [request.files.get(f'photo{i}') for i in range(1, MAX_PHOTOS + 1)][:max(0, MAX_PHOTOS - existing)]
+        for filename, order in save_uploaded_photos(product_id, files, existing + 1):
+            conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)', (product_id, filename, order))
     return redirect(url_for('product_detail', product_id=product_id))
 
 
@@ -271,59 +280,114 @@ def duplicate_product(product_id):
         product = conn.execute('SELECT * FROM products WHERE id=?', (product_id,)).fetchone()
     if not product:
         abort(404)
-    # Nothing is saved yet. The copied values are presented as a new-product form,
-    # with an empty barcode and no photos. Scanning a new physical barcode creates it.
     return render_template('form.html', product=product, photos=[], duplicate_mode=True)
 
 
-@app.post('/product/<int:product_id>/toggle')
-def toggle_status(product_id):
+@app.post('/product/<int:product_id>/barcode/add')
+def add_item_barcode(product_id):
+    code = request.form.get('barcode', '').strip()
+    if not code:
+        flash('Scan or enter a barcode.', 'error')
+        return redirect(url_for('product_detail', product_id=product_id))
+    try:
+        with db() as conn:
+            if not conn.execute('SELECT 1 FROM products WHERE id=?', (product_id,)).fetchone():
+                abort(404)
+            conn.execute('INSERT INTO item_barcodes(product_id,barcode,state,added_at) VALUES(?,?,\'Available\',?)',
+                         (product_id, code, datetime.now().isoformat(timespec='seconds')))
+            sync_product(conn, product_id)
+    except sqlite3.IntegrityError:
+        flash(f'Barcode {code} is already in use.', 'error')
+    return redirect(url_for('product_detail', product_id=product_id))
+
+
+@app.post('/barcode/<int:barcode_id>/edit')
+def edit_item_barcode(barcode_id):
+    code = request.form.get('barcode', '').strip()
     with db() as conn:
-        product = conn.execute('SELECT * FROM products WHERE id=?', (product_id,)).fetchone()
-        if not product:
+        row = conn.execute('SELECT * FROM item_barcodes WHERE id=?', (barcode_id,)).fetchone()
+        if not row:
             abort(404)
-        if product['status'] == 'Available':
-            conn.execute('UPDATE products SET status="Sold",date_sold=? WHERE id=?',
-                         (datetime.now().isoformat(timespec='seconds'), product_id))
-        elif product['quantity'] > 0:
-            conn.execute('UPDATE products SET status="Available",date_sold=NULL WHERE id=?', (product_id,))
-        else:
-            flash('Add stock before marking this product Available.', 'error')
-    return redirect(request.referrer or url_for('index'))
+        product_id = row['product_id']
+        if not code:
+            flash('Barcode cannot be empty.', 'error')
+            return redirect(url_for('product_detail', product_id=product_id))
+        try:
+            conn.execute('UPDATE item_barcodes SET barcode=? WHERE id=?', (code, barcode_id))
+        except sqlite3.IntegrityError:
+            flash(f'Barcode {code} is already in use.', 'error')
+    return redirect(url_for('product_detail', product_id=product_id))
+
+
+@app.post('/barcode/<int:barcode_id>/toggle')
+def toggle_item_barcode(barcode_id):
+    with db() as conn:
+        row = conn.execute('SELECT * FROM item_barcodes WHERE id=?', (barcode_id,)).fetchone()
+        if not row:
+            abort(404)
+        new_state = 'Sold' if row['state'] == 'Available' else 'Available'
+        conn.execute('UPDATE item_barcodes SET state=?,sold_at=? WHERE id=?',
+                     (new_state, datetime.now().isoformat(timespec='seconds') if new_state == 'Sold' else None, barcode_id))
+        sync_product(conn, row['product_id'])
+        product_id = row['product_id']
+    return redirect(url_for('product_detail', product_id=product_id))
+
+
+@app.post('/barcode/<int:barcode_id>/delete')
+def delete_item_barcode(barcode_id):
+    with db() as conn:
+        row = conn.execute('SELECT * FROM item_barcodes WHERE id=?', (barcode_id,)).fetchone()
+        if not row:
+            abort(404)
+        product_id = row['product_id']
+        conn.execute('DELETE FROM item_barcodes WHERE id=?', (barcode_id,))
+        sync_product(conn, product_id)
+    return redirect(url_for('product_detail', product_id=product_id))
 
 
 @app.post('/product/<int:product_id>/sell-one')
 def sell_one(product_id):
     with db() as conn:
-        product = conn.execute('SELECT * FROM products WHERE id=?', (product_id,)).fetchone()
-        if not product:
-            abort(404)
-        quantity = max(0, product['quantity'] - 1)
-        if quantity == 0:
-            conn.execute('UPDATE products SET quantity=0,status="Sold",date_sold=? WHERE id=?',
-                         (datetime.now().isoformat(timespec='seconds'), product_id))
-        else:
-            conn.execute('UPDATE products SET quantity=? WHERE id=?', (quantity, product_id))
-    return redirect(request.referrer or url_for('product_detail', product_id=product_id))
+        barcode = conn.execute("SELECT * FROM item_barcodes WHERE product_id=? AND state='Available' ORDER BY id LIMIT 1", (product_id,)).fetchone()
+        if not barcode:
+            flash('No available item barcodes remain.', 'error')
+            return redirect(url_for('product_detail', product_id=product_id))
+        conn.execute("UPDATE item_barcodes SET state='Sold',sold_at=? WHERE id=?",
+                     (datetime.now().isoformat(timespec='seconds'), barcode['id']))
+        sync_product(conn, product_id)
+    return redirect(url_for('product_detail', product_id=product_id))
 
 
 @app.post('/product/<int:product_id>/restock-one')
 def restock_one(product_id):
     with db() as conn:
-        product = conn.execute('SELECT * FROM products WHERE id=?', (product_id,)).fetchone()
-        if not product:
-            abort(404)
-        new_quantity = product['quantity'] + 1
-        conn.execute('UPDATE products SET quantity=?,status="Available",date_sold=NULL WHERE id=?',
-                     (new_quantity, product_id))
-    return redirect(request.referrer or url_for('product_detail', product_id=product_id))
+        barcode = conn.execute("SELECT * FROM item_barcodes WHERE product_id=? AND state='Sold' ORDER BY id LIMIT 1", (product_id,)).fetchone()
+        if not barcode:
+            flash('There is no sold barcode to restore. Add a new item barcode instead.', 'info')
+            return redirect(url_for('product_detail', product_id=product_id))
+        conn.execute("UPDATE item_barcodes SET state='Available',sold_at=NULL WHERE id=?", (barcode['id'],))
+        sync_product(conn, product_id)
+    return redirect(url_for('product_detail', product_id=product_id))
+
+
+@app.post('/product/<int:product_id>/toggle')
+def toggle_status(product_id):
+    with db() as conn:
+        rows = conn.execute('SELECT * FROM item_barcodes WHERE product_id=?', (product_id,)).fetchall()
+        if not rows:
+            flash('This product has no item barcodes.', 'error')
+            return redirect(url_for('product_detail', product_id=product_id))
+        target = 'Sold' if any(r['state'] == 'Available' for r in rows) else 'Available'
+        conn.execute('UPDATE item_barcodes SET state=?,sold_at=? WHERE product_id=?',
+                     (target, datetime.now().isoformat(timespec='seconds') if target == 'Sold' else None, product_id))
+        sync_product(conn, product_id)
+    return redirect(url_for('product_detail', product_id=product_id))
 
 
 @app.post('/product/<int:product_id>/delete')
 def delete_product(product_id):
     with db() as conn:
         photos = conn.execute('SELECT filename FROM photos WHERE product_id=?', (product_id,)).fetchall()
-        conn.execute('DELETE FROM photos WHERE product_id=?', (product_id,))
         conn.execute('DELETE FROM products WHERE id=?', (product_id,))
     for photo in photos:
         try:
@@ -367,12 +431,13 @@ def paypal_export():
     writer = csv.writer(output)
     writer.writerow(['Name', 'Price', 'Barcode', 'SKU', 'In Stock'])
     with db() as conn:
-        rows = conn.execute('SELECT item,price_pence,inventory_id,quantity FROM products ORDER BY id').fetchall()
+        rows = conn.execute('''SELECT p.item,p.price_pence,p.id product_id,ib.barcode,ib.state
+                               FROM item_barcodes ib JOIN products p ON p.id=ib.product_id
+                               ORDER BY p.id,ib.id''').fetchall()
     for row in rows:
-        writer.writerow([row['item'], f"{row['price_pence'] / 100:.2f}", row['inventory_id'], row['inventory_id'], row['quantity']])
+        writer.writerow([row['item'], f"{row['price_pence'] / 100:.2f}", row['barcode'], row['barcode'], 1 if row['state'] == 'Available' else 0])
     filename = f"raes-stock-paypal-{datetime.now().strftime('%Y%m%d-%H%M')}.csv"
-    return Response(output.getvalue(), mimetype='text/csv',
-                    headers={'Content-Disposition': f'attachment; filename={filename}'})
+    return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': f'attachment; filename={filename}'})
 
 
 @app.post('/paypal/import')
@@ -390,6 +455,7 @@ def paypal_import():
 
     updated = 0
     skipped = 0
+    touched_products = set()
     with db() as conn:
         for row in reader:
             code = csv_value(row, 'Barcode', 'SKU', 'Product Code', 'Inventory ID')
@@ -398,22 +464,22 @@ def paypal_import():
                 skipped += 1
                 continue
             try:
-                quantity = max(0, int(float(qty_text)))
+                qty = int(float(qty_text))
             except ValueError:
                 skipped += 1
                 continue
-            product = conn.execute('SELECT * FROM products WHERE inventory_id=? OR barcode=?', (code, code)).fetchone()
-            if not product:
+            barcode = conn.execute('SELECT * FROM item_barcodes WHERE barcode=?', (code,)).fetchone()
+            if not barcode:
                 skipped += 1
                 continue
-            if quantity == 0:
-                conn.execute('UPDATE products SET quantity=0,status="Sold",date_sold=COALESCE(date_sold,?) WHERE id=?',
-                             (datetime.now().isoformat(timespec='seconds'), product['id']))
-            else:
-                conn.execute('UPDATE products SET quantity=?,status="Available",date_sold=NULL WHERE id=?',
-                             (quantity, product['id']))
+            new_state = 'Available' if qty > 0 else 'Sold'
+            conn.execute('UPDATE item_barcodes SET state=?,sold_at=? WHERE id=?',
+                         (new_state, None if new_state == 'Available' else datetime.now().isoformat(timespec='seconds'), barcode['id']))
+            touched_products.add(barcode['product_id'])
             updated += 1
-    flash(f'PayPal stock import complete: {updated} updated, {skipped} skipped.', 'success')
+        for product_id in touched_products:
+            sync_product(conn, product_id)
+    flash(f'PayPal item import complete: {updated} physical barcodes updated, {skipped} skipped.', 'success')
     return redirect(url_for('paypal'))
 
 
