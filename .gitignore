@@ -1,6 +1,7 @@
 data/*.db
 photos/*
 backups/*
+updater-state/*
 __pycache__/
 *.pyc
 .env
