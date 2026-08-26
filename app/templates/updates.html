@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Updates · Rae's Bits and Bobbins Stock{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>Updates</h1>
+  <p><strong>Installed:</strong> v{{ current_version }}</p>
+  <p><strong>Latest on GitHub:</strong> {{ ('v' ~ latest_version) if latest_version else 'Unable to check' }}</p>
+  <p><strong>Updater status:</strong> {{ updater_status }}</p>
+  {% if update_available %}
+    <p>An update is available. Installing will back up the SQLite database, pull the latest files from GitHub, rebuild the Docker stack, and restart the app.</p>
+    <form method="post" action="{{ url_for('install_update') }}">
+      <button class="btn primary" type="submit">Install Update</button>
+    </form>
+  {% elif latest_version %}
+    <p>You are up to date.</p>
+  {% else %}
+    <p>The GitHub version check failed. Your installed app is still usable.</p>
+  {% endif %}
+  <p><a class="btn" href="{{ url_for('updates') }}">Check Again</a></p>
+</section>
+<section class="panel">
+  <h2>Update log</h2>
+  <pre style="white-space:pre-wrap;max-height:360px;overflow:auto">{{ update_log or 'No updater activity yet.' }}</pre>
+</section>
+{% endblock %}
