@@ -1,10 +1,12 @@
+import csv
+import io
 import os
 import sqlite3
 import uuid
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, abort, Response
 from werkzeug.utils import secure_filename
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -60,8 +62,7 @@ def init_db():
         columns = {r['name'] for r in conn.execute('PRAGMA table_info(products)').fetchall()}
         if 'quantity' not in columns:
             conn.execute('ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1')
-        # v0.0.4: there is only one user-facing identifier. The inventory ID is the barcode.
-        # Clear legacy barcode values first to avoid UNIQUE collisions during migration.
+        # One user-facing identifier only: inventory_id is also the barcode/SKU.
         conn.execute('UPDATE products SET barcode=NULL')
         conn.execute('UPDATE products SET barcode=inventory_id WHERE inventory_id IS NOT NULL')
 
@@ -117,6 +118,15 @@ def tail(path, limit=80):
         return '\n'.join(path.read_text(errors='replace').splitlines()[-limit:])
     except OSError:
         return ''
+
+
+def csv_value(row, *names):
+    normalised = {str(k).strip().lower(): (v or '').strip() for k, v in row.items() if k is not None}
+    for name in names:
+        value = normalised.get(name.lower())
+        if value != '':
+            return value
+    return ''
 
 
 @app.template_filter('money')
@@ -293,6 +303,65 @@ def delete_photo(photo_id):
 @app.route('/photos/<path:filename>')
 def photo_file(filename):
     return send_from_directory(PHOTO_DIR,filename)
+
+
+@app.route('/paypal')
+def paypal():
+    return render_template('paypal.html')
+
+
+@app.route('/paypal/export.csv')
+def paypal_export():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    # PayPal POS-friendly product-library fields. Barcode and SKU deliberately use the same ID.
+    writer.writerow(['Name','Price','Barcode','SKU','In Stock'])
+    with db() as conn:
+        rows = conn.execute('SELECT item,price_pence,inventory_id,quantity FROM products ORDER BY id').fetchall()
+    for row in rows:
+        writer.writerow([row['item'], f"{row['price_pence']/100:.2f}", row['inventory_id'], row['inventory_id'], row['quantity']])
+    filename = f"raes-stock-paypal-{datetime.now().strftime('%Y%m%d-%H%M')}.csv"
+    return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': f'attachment; filename={filename}'})
+
+
+@app.post('/paypal/import')
+def paypal_import():
+    uploaded = request.files.get('file')
+    if not uploaded or not uploaded.filename:
+        flash('Choose a PayPal stock CSV first.','error')
+        return redirect(url_for('paypal'))
+    try:
+        text = uploaded.read().decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(text))
+    except Exception as exc:
+        flash(f'Could not read CSV: {exc}','error')
+        return redirect(url_for('paypal'))
+
+    updated = 0
+    skipped = 0
+    with db() as conn:
+        for row in reader:
+            code = csv_value(row, 'Barcode', 'SKU', 'Product Code', 'Inventory ID')
+            qty_text = csv_value(row, 'In Stock', 'Stock', 'Quantity', 'Qty')
+            if not code or qty_text == '':
+                skipped += 1
+                continue
+            try:
+                quantity = max(0, int(float(qty_text)))
+            except ValueError:
+                skipped += 1
+                continue
+            product = conn.execute('SELECT * FROM products WHERE inventory_id=? OR barcode=?',(code,code)).fetchone()
+            if not product:
+                skipped += 1
+                continue
+            if quantity == 0:
+                conn.execute('UPDATE products SET quantity=0,status="Sold",date_sold=COALESCE(date_sold,?) WHERE id=?',(datetime.now().isoformat(timespec='seconds'),product['id']))
+            else:
+                conn.execute('UPDATE products SET quantity=?,status="Available",date_sold=NULL WHERE id=?',(quantity,product['id']))
+            updated += 1
+    flash(f'PayPal stock import complete: {updated} updated, {skipped} skipped.','success')
+    return redirect(url_for('paypal'))
 
 
 @app.route('/updates')
