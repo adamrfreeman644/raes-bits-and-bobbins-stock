@@ -9,13 +9,11 @@
 <body>
 <header class="topbar">
   <a class="brand" href="{{ url_for('index') }}">Rae's Bits and Bobbins Stock</a>
-  <span class="version">v0.0.1</span>
+  <div style="display:flex;gap:8px;align-items:center"><a class="btn" href="{{ url_for('updates') }}">Updates</a><span class="version">v0.0.2</span></div>
 </header>
 <main class="shell">
   {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in messages %}
-      <div class="flash {{ category }}">{{ message }}</div>
-    {% endfor %}
+    {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
   {% endwith %}
   {% block content %}{% endblock %}
 </main>
