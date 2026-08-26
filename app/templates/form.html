@@ -1,84 +1,40 @@
 {% extends 'base.html' %}
-{% set page_title = 'Duplicate Product' if duplicate_mode else ('Edit Product' if product else 'Add Product') %}
-{% block title %}{{ page_title }}{% endblock %}
+{% block title %}{{ 'Duplicate Product' if duplicate_mode else ('Edit Product' if product else 'Add Product') }}{% endblock %}
 {% block content %}
-<div class="page-head">
-  <a class="btn" href="{{ url_for('product_detail', product_id=product.id) if product else url_for('index') }}">← Back</a>
-  <h1>{{ page_title }}</h1>
+<div class="page-head"><a class="btn" href="{{ url_for('product_detail', product_id=product.id) if product and not duplicate_mode else url_for('index') }}">← Back</a><h1>{{ 'Duplicate Product' if duplicate_mode else ('Edit Product' if product else 'Add Product') }}</h1></div>
+<form class="product-form" method="post" enctype="multipart/form-data" action="{{ url_for('new_product') if duplicate_mode else request.path }}">
+{% if not product or duplicate_mode %}
+<label>First item barcode *<input id="barcode" name="barcode" required autocomplete="off" placeholder="Scan the barcode already stuck to this item"></label>
+<div class="flash info">This creates the product and assigns its first physical item barcode. Add more item barcodes from the product page afterwards.</div>
+{% else %}
+<div class="flash info">Physical item barcodes are managed from the product page. Product quantity is calculated from the number of item barcodes still Available.</div>
+{% endif %}
+<label>Item *<input id="item" name="item" required value="{{ product.item if product else '' }}" placeholder="Cushion, pencil case, blanket…"></label>
+<div class="two-col"><label>Main colour<input name="main_colour" value="{{ product.main_colour if product else '' }}" placeholder="Blue"></label><label>Secondary colour<input name="secondary_colour" value="{{ product.secondary_colour if product else '' }}" placeholder="Cream"></label></div>
+<label>Pattern<input name="pattern" value="{{ product.pattern if product else '' }}" placeholder="Floral, striped, plain…"></label>
+<label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label>
+<label>Notes<textarea name="notes" rows="3" placeholder="Optional internal notes">{{ product.notes if product else '' }}</textarea></label>
+<h2>Photos <small>up to 5 primary photos</small></h2>
+<div class="photo-slots">
+  {% for i in range(1,6) %}
+    {% set existing = photos[i-1] if photos and photos|length >= i else None %}
+    <div class="photo-slot {{ 'filled' if existing }}" data-slot="{{ i }}">
+      {% if existing and not duplicate_mode %}
+        <div class="photo-slot-preview"><img src="{{ url_for('photo_file', filename=existing.filename) }}" alt="Photo {{ i }}"></div>
+        <button class="danger-mini" formmethod="post" formaction="{{ url_for('delete_photo', photo_id=existing.id) }}" type="submit" onclick="return confirm('Delete this photo?')">Remove</button>
+      {% else %}
+        <label class="photo-picker-slot" for="photo{{ i }}"><span class="photo-slot-label">+ Photo {{ i }}</span><img class="photo-slot-new-preview" alt="Selected photo {{ i }}"></label>
+        <input class="photo-file-input" id="photo{{ i }}" type="file" name="photo{{ i }}" accept="image/*" capture="environment" data-preview-slot="{{ i }}">
+      {% endif %}
+    </div>
+  {% endfor %}
 </div>
-<form class="product-form" method="post" enctype="multipart/form-data" {% if duplicate_mode %}action="{{ url_for('new_product') }}"{% endif %}>
-  {% if duplicate_mode %}
-    <div class="flash info">Product details copied. Scan the new product's physical barcode; photos are intentionally not copied.</div>
-  {% elif not product %}
-    <div class="flash info">Stick the barcode label on the product first, then scan it here.</div>
-  {% endif %}
-
-  <label>Barcode *
-    <input id="barcode" name="barcode" required autocomplete="off" inputmode="text"
-           value="{{ '' if duplicate_mode else (product.inventory_id if product else '') }}"
-           placeholder="Scan physical barcode…">
-  </label>
-
-  <label>Item *<input id="item" name="item" required value="{{ product.item if product else '' }}" placeholder="Cushion, pencil case, blanket…"></label>
-  <div class="two-col">
-    <label>Main colour<input name="main_colour" value="{{ product.main_colour if product else '' }}" placeholder="Blue"></label>
-    <label>Secondary colour<input name="secondary_colour" value="{{ product.secondary_colour if product else '' }}" placeholder="Cream"></label>
-  </div>
-  <label>Pattern<input name="pattern" value="{{ product.pattern if product else '' }}" placeholder="Floral, striped, plain…"></label>
-  <div class="two-col">
-    <label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label>
-    <label>Quantity<input name="quantity" inputmode="numeric" type="number" min="0" step="1" value="{{ product.quantity if product else 1 }}"></label>
-  </div>
-  <label>Status<select name="status"><option value="Available" {{ 'selected' if not product or product.status == 'Available' }}>Available</option><option value="Sold" {{ 'selected' if product and product.status == 'Sold' }}>Sold</option></select></label>
-  <label>Notes<textarea name="notes" rows="3" placeholder="Optional internal notes">{{ product.notes if product else '' }}</textarea></label>
-
-  <h2>Photos <small>up to 5 total</small></h2>
-  <div class="photo-slots">
-    {% for i in range(1,6) %}
-      {% set existing = photos[i-1] if photos and photos|length >= i else None %}
-      <div class="photo-slot {{ 'filled' if existing }}" data-slot="{{ i }}">
-        {% if existing %}
-          <div class="photo-slot-preview"><img src="{{ url_for('photo_file', filename=existing.filename) }}" alt="Photo {{ i }}"></div>
-          <button class="danger-mini" formmethod="post" formaction="{{ url_for('delete_photo', photo_id=existing.id) }}" type="submit" onclick="return confirm('Delete this photo?')">Remove</button>
-        {% else %}
-          <label class="photo-picker-slot" for="photo{{ i }}">
-            <span class="photo-slot-label">+ Photo {{ i }}</span>
-            <img class="photo-slot-new-preview" alt="Selected photo {{ i }}">
-          </label>
-          <input class="photo-file-input" id="photo{{ i }}" type="file" name="photo{{ i }}" accept="image/*" capture="environment" data-preview-slot="{{ i }}">
-        {% endif %}
-      </div>
-    {% endfor %}
-  </div>
-
-  <div class="form-actions"><a class="btn" href="{{ url_for('index') }}">Cancel</a><button class="btn primary big" type="submit">{{ 'Create Duplicate' if duplicate_mode else 'Save Product' }}</button></div>
+<div class="form-actions"><a class="btn" href="{{ url_for('index') }}">Cancel</a><button class="btn primary big" type="submit">{{ 'Create Duplicate' if duplicate_mode else 'Save Product' }}</button></div>
 </form>
 {% endblock %}
 {% block scripts %}
 <script>
-window.addEventListener('load',()=>{
-  const barcode=document.getElementById('barcode');
-  {% if duplicate_mode or not product %}barcode.focus();{% endif %}
-});
-const barcode=document.getElementById('barcode');
-barcode.addEventListener('keydown',e=>{
-  if(e.key==='Enter'){
-    e.preventDefault();
-    document.getElementById('item').focus();
-  }
-});
-document.querySelectorAll('.photo-file-input').forEach(input=>{
-  input.addEventListener('change',()=>{
-    const file=input.files && input.files[0];
-    if(!file) return;
-    const slot=input.closest('.photo-slot');
-    const img=slot.querySelector('.photo-slot-new-preview');
-    const label=slot.querySelector('.photo-slot-label');
-    img.src=URL.createObjectURL(file);
-    img.style.display='block';
-    label.style.display='none';
-    slot.classList.add('pending');
-  });
-});
+{% if not product or duplicate_mode %}window.addEventListener('load',()=>document.getElementById('barcode').focus());{% endif %}
+document.querySelectorAll('.photo-file-input').forEach(input=>{input.addEventListener('change',()=>{const file=input.files&&input.files[0];if(!file)return;const slot=input.closest('.photo-slot');const img=slot.querySelector('.photo-slot-new-preview');const label=slot.querySelector('.photo-slot-label');img.src=URL.createObjectURL(file);img.style.display='block';label.style.display='none';slot.classList.add('pending');});});
 </script>
 {% endblock %}
