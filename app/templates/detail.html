@@ -1,11 +1,60 @@
 {% extends 'base.html' %}
 {% block title %}{{ product.item }}{% endblock %}
 {% block content %}
-<div class="page-head"><a class="btn" href="{{ url_for('index') }}">← Inventory</a><div class="head-actions"><a class="btn" href="{{ url_for('edit_product', product_id=product.id) }}">Edit</a></div></div>
-<div class="detail-layout"><section>{% if photos %}<div class="hero-photo"><img id="hero" src="{{ url_for('photo_file', filename=photos[0].filename) }}"></div><div class="photo-strip">{% for photo in photos %}<button type="button" onclick="document.getElementById('hero').src=this.firstElementChild.src"><img src="{{ url_for('photo_file', filename=photo.filename) }}"></button>{% endfor %}</div>{% else %}<div class="hero-photo no-photo">No photos</div>{% endif %}</section>
-<section class="product-info"><div class="card-head"><div><div class="muted">Barcode / Product ID: {{ product.inventory_id }}</div><h1>{{ product.item }}</h1></div><span class="status {{ product.status|lower }}">{{ product.status }}</span></div><div class="detail-price">{{ product.price_pence|money }}</div>
-<dl><dt>Quantity</dt><dd><strong>{{ product.quantity }}</strong></dd><dt>Main colour</dt><dd>{{ product.main_colour or '—' }}</dd><dt>Secondary colour</dt><dd>{{ product.secondary_colour or '—' }}</dd><dt>Pattern</dt><dd>{{ product.pattern or '—' }}</dd><dt>Barcode / ID</dt><dd class="barcode">{{ product.inventory_id }}</dd><dt>Date added</dt><dd>{{ product.date_added[:10] }}</dd>{% if product.date_sold %}<dt>Date sold</dt><dd>{{ product.date_sold[:10] }}</dd>{% endif %}{% if product.notes %}<dt>Notes</dt><dd>{{ product.notes }}</dd>{% endif %}</dl>
-<div class="form-actions"><form method="post" action="{{ url_for('sell_one', product_id=product.id) }}"><button class="btn primary" type="submit" {{ 'disabled' if product.quantity == 0 }}>Sell One −1</button></form><form method="post" action="{{ url_for('restock_one', product_id=product.id) }}"><button class="btn" type="submit">Add One +1</button></form></div>
-<form method="post" action="{{ url_for('toggle_status', product_id=product.id) }}"><button class="btn big {{ 'primary' if product.status == 'Available' }}" type="submit">{{ 'Mark Sold' if product.status == 'Available' else 'Mark Available' }}</button></form>
-<form method="post" action="{{ url_for('delete_product', product_id=product.id) }}" onsubmit="return confirm('Delete this product permanently?')"><button class="btn danger" type="submit">Delete Product</button></form></section></div>
+<div class="page-head detail-page-head">
+  <a class="btn" href="{{ url_for('index') }}">← Inventory</a>
+  <a class="btn" href="{{ url_for('edit_product', product_id=product.id) }}">Edit</a>
+</div>
+
+<div class="detail-layout">
+  <section class="gallery-panel">
+    {% if photos %}
+      <div class="hero-photo"><img id="hero" src="{{ url_for('photo_file', filename=photos[0].filename) }}"></div>
+      {% if photos|length > 1 %}
+      <div class="photo-strip">
+        {% for photo in photos %}
+        <button type="button" onclick="document.getElementById('hero').src=this.firstElementChild.src"><img src="{{ url_for('photo_file', filename=photo.filename) }}"></button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="hero-photo no-photo">No photos</div>
+    {% endif %}
+  </section>
+
+  <section class="product-info">
+    <div class="product-title-row">
+      <div>
+        <div class="product-code">{{ product.inventory_id }}</div>
+        <h1>{{ product.item }}</h1>
+      </div>
+      <span class="status {{ product.status|lower }}">{{ product.status }}</span>
+    </div>
+
+    <div class="price-stock-row">
+      <div class="detail-price">{{ product.price_pence|money }}</div>
+      <div class="stock-pill"><span>Qty</span><strong>{{ product.quantity }}</strong></div>
+    </div>
+
+    <dl class="product-details">
+      <dt>Main colour</dt><dd>{{ product.main_colour or '—' }}</dd>
+      <dt>Secondary colour</dt><dd>{{ product.secondary_colour or '—' }}</dd>
+      <dt>Pattern</dt><dd>{{ product.pattern or '—' }}</dd>
+      <dt>Barcode / ID</dt><dd class="barcode">{{ product.inventory_id }}</dd>
+      <dt>Date added</dt><dd>{{ product.date_added[:10] }}</dd>
+      {% if product.date_sold %}<dt>Date sold</dt><dd>{{ product.date_sold[:10] }}</dd>{% endif %}
+      {% if product.notes %}<dt>Notes</dt><dd>{{ product.notes }}</dd>{% endif %}
+    </dl>
+
+    <div class="stock-actions">
+      <form method="post" action="{{ url_for('sell_one', product_id=product.id) }}"><button class="btn primary action-btn" type="submit" {{ 'disabled' if product.quantity == 0 }}>Sell One −1</button></form>
+      <form method="post" action="{{ url_for('restock_one', product_id=product.id) }}"><button class="btn action-btn" type="submit">Add One +1</button></form>
+    </div>
+
+    <div class="secondary-actions">
+      <form method="post" action="{{ url_for('toggle_status', product_id=product.id) }}"><button class="btn action-btn" type="submit">{{ 'Mark Sold' if product.status == 'Available' else 'Mark Available' }}</button></form>
+      <form method="post" action="{{ url_for('delete_product', product_id=product.id) }}" onsubmit="return confirm('Delete this product permanently?')"><button class="btn danger action-btn" type="submit">Delete Product</button></form>
+    </div>
+  </section>
+</div>
 {% endblock %}
