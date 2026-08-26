@@ -3,8 +3,8 @@
 {% block content %}
 <div class="page-head"><a class="btn" href="{{ url_for('product_detail', product_id=product.id) if product else url_for('index') }}">← Back</a><h1>{{ 'Edit Product' if product else 'Add Product' }}</h1></div>
 <form class="product-form" method="post" enctype="multipart/form-data">
-<label>Barcode<input id="barcode" name="barcode" inputmode="numeric" autocomplete="off" value="{{ product.barcode if product else '' }}" placeholder="Scan barcode…"></label>
-<label>Item *<input name="item" required value="{{ product.item if product else '' }}" placeholder="Cushion, pencil case, blanket…"></label>
+{% if product %}<label>Barcode / Product ID<input value="{{ product.inventory_id }}" readonly></label>{% else %}<div class="flash info">A unique barcode such as <strong>INV-0001</strong> will be assigned automatically when you save this product.</div>{% endif %}
+<label>Item *<input id="item" name="item" required value="{{ product.item if product else '' }}" placeholder="Cushion, pencil case, blanket…"></label>
 <div class="two-col"><label>Main colour<input name="main_colour" value="{{ product.main_colour if product else '' }}" placeholder="Blue"></label><label>Secondary colour<input name="secondary_colour" value="{{ product.secondary_colour if product else '' }}" placeholder="Cream"></label></div>
 <label>Pattern<input name="pattern" value="{{ product.pattern if product else '' }}" placeholder="Floral, striped, plain…"></label>
 <div class="two-col"><label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label><label>Quantity<input name="quantity" inputmode="numeric" type="number" min="0" step="1" value="{{ product.quantity if product else 1 }}"></label></div>
@@ -15,4 +15,4 @@
 <div class="form-actions"><a class="btn" href="{{ url_for('index') }}">Cancel</a><button class="btn primary big" type="submit">Save Product</button></div>
 </form>
 {% endblock %}
-{% block scripts %}<script>{% if not product %}window.addEventListener('load',()=>document.getElementById('barcode').focus());{% endif %}</script>{% endblock %}
+{% block scripts %}<script>{% if not product %}window.addEventListener('load',()=>document.getElementById('item').focus());{% endif %}</script>{% endblock %}
