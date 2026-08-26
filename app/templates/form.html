@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit Product' if product else 'Add Product' }}{% endblock %}
+{% block content %}
+<div class="page-head"><a class="btn" href="{{ url_for('product_detail', product_id=product.id) if product else url_for('index') }}">← Back</a><h1>{{ 'Edit Product' if product else 'Add Product' }}</h1></div>
+<form class="product-form" method="post" enctype="multipart/form-data">
+<label>Barcode<input id="barcode" name="barcode" inputmode="numeric" autocomplete="off" value="{{ product.barcode if product else '' }}" placeholder="Scan barcode…"></label>
+<label>Item *<input name="item" required value="{{ product.item if product else '' }}" placeholder="Cushion, pencil case, blanket…"></label>
+<div class="two-col"><label>Main colour<input name="main_colour" value="{{ product.main_colour if product else '' }}" placeholder="Blue"></label><label>Secondary colour<input name="secondary_colour" value="{{ product.secondary_colour if product else '' }}" placeholder="Cream"></label></div>
+<label>Pattern<input name="pattern" value="{{ product.pattern if product else '' }}" placeholder="Floral, striped, plain…"></label>
+<div class="two-col"><label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label><label>Status<select name="status"><option {{ 'selected' if not product or product.status == 'Available' }}>Available</option><option {{ 'selected' if product and product.status == 'Sold' }}>Sold</option></select></label></div>
+<label>Notes<textarea name="notes" rows="3" placeholder="Optional internal notes">{{ product.notes if product else '' }}</textarea></label>
+{% if photos %}<h2>Current photos</h2><div class="photo-grid">{% for photo in photos %}<div class="photo-edit"><img src="{{ url_for('photo_file', filename=photo.filename) }}"><button class="danger-mini" formmethod="post" formaction="{{ url_for('delete_photo', photo_id=photo.id) }}" type="submit" onclick="return confirm('Delete this photo?')">Remove</button></div>{% endfor %}</div>{% endif %}
+<h2>Photos <small>up to 5 total</small></h2><div class="photo-inputs">{% for i in range(1,6) %}<label class="photo-picker">+ Photo {{ i }}<input type="file" name="photo{{ i }}" accept="image/*" capture="environment"></label>{% endfor %}</div>
+<div class="form-actions"><a class="btn" href="{{ url_for('index') }}">Cancel</a><button class="btn primary big" type="submit">Save Product</button></div>
+</form>
+{% endblock %}
+{% block scripts %}<script>{% if not product %}window.addEventListener('load',()=>document.getElementById('barcode').focus());{% endif %}</script>{% endblock %}
