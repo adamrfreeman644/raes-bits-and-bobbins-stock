@@ -14,7 +14,7 @@ DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR / 'data'))
 PHOTO_DIR = Path(os.environ.get('PHOTO_DIR', BASE_DIR / 'photos'))
 UPDATER_DIR = Path(os.environ.get('UPDATER_DIR', BASE_DIR / 'updater-state'))
 DB_PATH = DATA_DIR / 'inventory.db'
-VERSION = '0.0.4'
+VERSION = '0.0.5'
 LATEST_URL = 'https://raw.githubusercontent.com/adamrfreeman644/raes-bits-and-bobbins-stock/main/VERSION'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'}
 MAX_PHOTOS = 5
@@ -62,7 +62,6 @@ def init_db():
         columns = {r['name'] for r in conn.execute('PRAGMA table_info(products)').fetchall()}
         if 'quantity' not in columns:
             conn.execute('ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1')
-        # One user-facing identifier only: inventory_id is also the barcode/SKU.
         conn.execute('UPDATE products SET barcode=NULL')
         conn.execute('UPDATE products SET barcode=inventory_id WHERE inventory_id IS NOT NULL')
 
@@ -314,7 +313,6 @@ def paypal():
 def paypal_export():
     output = io.StringIO()
     writer = csv.writer(output)
-    # PayPal POS-friendly product-library fields. Barcode and SKU deliberately use the same ID.
     writer.writerow(['Name','Price','Barcode','SKU','In Stock'])
     with db() as conn:
         rows = conn.execute('SELECT item,price_pence,inventory_id,quantity FROM products ORDER BY id').fetchall()
@@ -336,7 +334,6 @@ def paypal_import():
     except Exception as exc:
         flash(f'Could not read CSV: {exc}','error')
         return redirect(url_for('paypal'))
-
     updated = 0
     skipped = 0
     with db() as conn:
