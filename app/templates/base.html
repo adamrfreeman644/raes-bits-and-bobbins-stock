@@ -9,7 +9,17 @@
 <body>
 <header class="topbar">
   <a class="brand" href="{{ url_for('index') }}">Rae's Bits and Bobbins Stock</a>
-  <div style="display:flex;gap:8px;align-items:center"><a class="btn" href="{{ url_for('paypal') }}">PayPal POS</a><a class="btn" href="{{ url_for('updates') }}">Updates</a><span class="version">v0.0.5</span></div>
+  <div class="menu-wrap">
+    <span class="version">v0.0.6</span>
+    <button class="burger" id="burgerButton" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
+    <nav class="burger-menu" id="burgerMenu" aria-hidden="true">
+      <a href="{{ url_for('index') }}"><strong>Inventory</strong><span>Cards and table</span></a>
+      <a href="{{ url_for('new_product') }}"><strong>Add Product</strong><span>Create stock record</span></a>
+      <a href="/photo-shoot/"><strong>Photo Shoot</strong><span>Fast scan + batch photos</span></a>
+      <a href="{{ url_for('paypal') }}"><strong>PayPal POS</strong><span>Export / import stock</span></a>
+      <a href="{{ url_for('updates') }}"><strong>Updates</strong><span>Check and install</span></a>
+    </nav>
+  </div>
 </header>
 <main class="shell">
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -17,6 +27,9 @@
   {% endwith %}
   {% block content %}{% endblock %}
 </main>
+<script>
+(()=>{const b=document.getElementById('burgerButton'),m=document.getElementById('burgerMenu');if(!b||!m)return;const close=()=>{m.classList.remove('open');m.setAttribute('aria-hidden','true');b.setAttribute('aria-expanded','false')};b.addEventListener('click',e=>{e.stopPropagation();const open=!m.classList.contains('open');m.classList.toggle('open',open);m.setAttribute('aria-hidden',String(!open));b.setAttribute('aria-expanded',String(open))});document.addEventListener('click',e=>{if(!m.contains(e.target)&&e.target!==b)close()});document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
