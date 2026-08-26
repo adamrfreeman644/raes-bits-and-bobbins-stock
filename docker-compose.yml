@@ -3,7 +3,7 @@ services:
     build: .
     container_name: inventory-manager
     ports:
-      - "1975:8080"
+      - "1975:1975"
     environment:
       - SECRET_KEY=change-this-before-production
       - DATA_DIR=/data
