@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import uuid
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, abort
@@ -9,15 +10,18 @@ from werkzeug.utils import secure_filename
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR / 'data'))
 PHOTO_DIR = Path(os.environ.get('PHOTO_DIR', BASE_DIR / 'photos'))
+UPDATER_DIR = Path(os.environ.get('UPDATER_DIR', BASE_DIR / 'updater-state'))
 DB_PATH = DATA_DIR / 'inventory.db'
+VERSION = '0.0.2'
+LATEST_URL = 'https://raw.githubusercontent.com/adamrfreeman644/raes-bits-and-bobbins-stock/main/VERSION'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'}
 MAX_PHOTOS = 5
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+for p in (DATA_DIR, PHOTO_DIR, UPDATER_DIR):
+    p.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'inventory-manager-v0.0.1-change-me')
+app.secret_key = os.environ.get('SECRET_KEY', 'change-this-before-production')
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024
 
 
@@ -44,7 +48,6 @@ def init_db():
             date_sold TEXT,
             notes TEXT
         );
-
         CREATE TABLE IF NOT EXISTS photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             product_id INTEGER NOT NULL,
@@ -65,8 +68,7 @@ def allowed_file(filename):
 
 
 def save_uploaded_photos(product_id, files, start_order=1):
-    saved = []
-    order = start_order
+    saved, order = [], start_order
     for file in files:
         if not file or not file.filename or not allowed_file(file.filename):
             continue
@@ -79,11 +81,35 @@ def save_uploaded_photos(product_id, files, start_order=1):
 
 
 def product_with_photos(conn, product_id):
-    product = conn.execute('SELECT * FROM products WHERE id = ?', (product_id,)).fetchone()
+    product = conn.execute('SELECT * FROM products WHERE id=?', (product_id,)).fetchone()
     if not product:
         return None, []
-    photos = conn.execute('SELECT * FROM photos WHERE product_id = ? ORDER BY sort_order, id', (product_id,)).fetchall()
+    photos = conn.execute('SELECT * FROM photos WHERE product_id=? ORDER BY sort_order,id', (product_id,)).fetchall()
     return product, photos
+
+
+def latest_version():
+    try:
+        req = urllib.request.Request(LATEST_URL, headers={'User-Agent': 'raes-stock-updater'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return response.read().decode('utf-8').strip()
+    except Exception:
+        return None
+
+
+def version_tuple(value):
+    try:
+        return tuple(int(x) for x in value.strip().lstrip('v').split('.'))
+    except Exception:
+        return (0,)
+
+
+def tail(path, limit=80):
+    try:
+        lines = path.read_text(errors='replace').splitlines()
+        return '\n'.join(lines[-limit:])
+    except OSError:
+        return ''
 
 
 @app.template_filter('money')
@@ -96,70 +122,56 @@ def index():
     view = request.args.get('view', 'cards')
     q = request.args.get('q', '').strip()
     status = request.args.get('status', '').strip()
-    sql = '''
-        SELECT p.*, ph.filename AS main_photo
-        FROM products p
-        LEFT JOIN photos ph ON ph.id = (
-            SELECT id FROM photos WHERE product_id = p.id ORDER BY sort_order, id LIMIT 1
-        )
-        WHERE 1=1
-    '''
+    sql = '''SELECT p.*, ph.filename AS main_photo FROM products p
+             LEFT JOIN photos ph ON ph.id=(SELECT id FROM photos WHERE product_id=p.id ORDER BY sort_order,id LIMIT 1)
+             WHERE 1=1'''
     params = []
     if q:
-        sql += ' AND (p.item LIKE ? OR p.main_colour LIKE ? OR p.secondary_colour LIKE ? OR p.pattern LIKE ? OR p.barcode LIKE ? OR p.inventory_id LIKE ?)'
         like = f'%{q}%'
+        sql += ' AND (p.item LIKE ? OR p.main_colour LIKE ? OR p.secondary_colour LIKE ? OR p.pattern LIKE ? OR p.barcode LIKE ? OR p.inventory_id LIKE ?)'
         params.extend([like] * 6)
     if status in ('Available', 'Sold'):
-        sql += ' AND p.status = ?'
+        sql += ' AND p.status=?'
         params.append(status)
     sql += ' ORDER BY p.id DESC'
     with db() as conn:
         products = conn.execute(sql, params).fetchall()
-        counts = conn.execute("SELECT status, COUNT(*) c FROM products GROUP BY status").fetchall()
-    count_map = {r['status']: r['c'] for r in counts}
+        counts = {r['status']: r['c'] for r in conn.execute('SELECT status,COUNT(*) c FROM products GROUP BY status').fetchall()}
     return render_template('index.html', products=products, view=view, q=q, status=status,
-                           available=count_map.get('Available', 0), sold=count_map.get('Sold', 0))
+                           available=counts.get('Available', 0), sold=counts.get('Sold', 0))
 
 
 @app.route('/product/new', methods=['GET', 'POST'])
 def new_product():
-    if request.method == 'POST':
-        item = request.form.get('item', '').strip()
-        barcode = request.form.get('barcode', '').strip() or None
-        if not item:
-            flash('Item is required.', 'error')
-            return render_template('form.html', product=None, photos=[])
-        try:
-            price_pence = round(float(request.form.get('price', '0') or 0) * 100)
-        except ValueError:
-            flash('Price must be a number.', 'error')
-            return render_template('form.html', product=None, photos=[])
-
-        files = [request.files.get(f'photo{i}') for i in range(1, MAX_PHOTOS + 1)]
-        try:
-            with db() as conn:
-                inventory_id = next_inventory_id(conn)
-                cur = conn.execute('''
-                    INSERT INTO products (inventory_id,item,main_colour,secondary_colour,pattern,price_pence,barcode,status,date_added,notes)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)
-                ''', (
-                    inventory_id, item,
-                    request.form.get('main_colour', '').strip(),
-                    request.form.get('secondary_colour', '').strip(),
-                    request.form.get('pattern', '').strip(),
-                    price_pence, barcode,
-                    request.form.get('status', 'Available'),
-                    datetime.now().isoformat(timespec='seconds'),
-                    request.form.get('notes', '').strip()
-                ))
-                product_id = cur.lastrowid
-                for filename, order in save_uploaded_photos(product_id, files):
-                    conn.execute('INSERT INTO photos (product_id, filename, sort_order) VALUES (?,?,?)', (product_id, filename, order))
-        except sqlite3.IntegrityError:
-            flash('That barcode is already registered.', 'error')
-            return render_template('form.html', product=None, photos=[])
-        return redirect(url_for('product_detail', product_id=product_id))
-    return render_template('form.html', product=None, photos=[])
+    if request.method == 'GET':
+        return render_template('form.html', product=None, photos=[])
+    item = request.form.get('item', '').strip()
+    if not item:
+        flash('Item is required.', 'error')
+        return render_template('form.html', product=None, photos=[])
+    try:
+        price_pence = round(float(request.form.get('price', '0') or 0) * 100)
+    except ValueError:
+        flash('Price must be a number.', 'error')
+        return render_template('form.html', product=None, photos=[])
+    files = [request.files.get(f'photo{i}') for i in range(1, MAX_PHOTOS + 1)]
+    try:
+        with db() as conn:
+            cur = conn.execute('''INSERT INTO products
+                (inventory_id,item,main_colour,secondary_colour,pattern,price_pence,barcode,status,date_added,notes)
+                VALUES (?,?,?,?,?,?,?,?,?,?)''', (
+                next_inventory_id(conn), item, request.form.get('main_colour','').strip(),
+                request.form.get('secondary_colour','').strip(), request.form.get('pattern','').strip(),
+                price_pence, request.form.get('barcode','').strip() or None,
+                request.form.get('status','Available'), datetime.now().isoformat(timespec='seconds'),
+                request.form.get('notes','').strip()))
+            product_id = cur.lastrowid
+            for filename, order in save_uploaded_photos(product_id, files):
+                conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)', (product_id, filename, order))
+    except sqlite3.IntegrityError:
+        flash('That barcode is already registered.', 'error')
+        return render_template('form.html', product=None, photos=[])
+    return redirect(url_for('product_detail', product_id=product_id))
 
 
 @app.route('/product/<int:product_id>')
@@ -177,49 +189,33 @@ def edit_product(product_id):
         product, photos = product_with_photos(conn, product_id)
     if not product:
         abort(404)
-
-    if request.method == 'POST':
-        try:
-            price_pence = round(float(request.form.get('price', '0') or 0) * 100)
-        except ValueError:
-            flash('Price must be a number.', 'error')
-            return render_template('form.html', product=product, photos=photos)
-
-        status = request.form.get('status', 'Available')
-        date_sold = product['date_sold']
-        if status == 'Sold' and product['status'] != 'Sold':
-            date_sold = datetime.now().isoformat(timespec='seconds')
-        elif status == 'Available':
-            date_sold = None
-
+    if request.method == 'GET':
+        return render_template('form.html', product=product, photos=photos)
+    try:
+        price_pence = round(float(request.form.get('price', '0') or 0) * 100)
+    except ValueError:
+        flash('Price must be a number.', 'error')
+        return render_template('form.html', product=product, photos=photos)
+    status = request.form.get('status', 'Available')
+    date_sold = product['date_sold']
+    if status == 'Sold' and product['status'] != 'Sold':
+        date_sold = datetime.now().isoformat(timespec='seconds')
+    elif status == 'Available':
+        date_sold = None
+    try:
         with db() as conn:
-            try:
-                conn.execute('''
-                    UPDATE products SET item=?, main_colour=?, secondary_colour=?, pattern=?, price_pence=?, barcode=?, status=?, date_sold=?, notes=? WHERE id=?
-                ''', (
-                    request.form.get('item', '').strip(),
-                    request.form.get('main_colour', '').strip(),
-                    request.form.get('secondary_colour', '').strip(),
-                    request.form.get('pattern', '').strip(),
-                    price_pence,
-                    request.form.get('barcode', '').strip() or None,
-                    status, date_sold,
-                    request.form.get('notes', '').strip(),
-                    product_id
-                ))
-            except sqlite3.IntegrityError:
-                flash('That barcode is already registered.', 'error')
-                product, photos = product_with_photos(conn, product_id)
-                return render_template('form.html', product=product, photos=photos)
-
+            conn.execute('''UPDATE products SET item=?,main_colour=?,secondary_colour=?,pattern=?,price_pence=?,barcode=?,status=?,date_sold=?,notes=? WHERE id=?''', (
+                request.form.get('item','').strip(), request.form.get('main_colour','').strip(),
+                request.form.get('secondary_colour','').strip(), request.form.get('pattern','').strip(), price_pence,
+                request.form.get('barcode','').strip() or None, status, date_sold, request.form.get('notes','').strip(), product_id))
             existing = conn.execute('SELECT COUNT(*) c FROM photos WHERE product_id=?', (product_id,)).fetchone()['c']
-            room = max(0, MAX_PHOTOS - existing)
-            files = [request.files.get(f'photo{i}') for i in range(1, MAX_PHOTOS + 1)][:room]
+            files = [request.files.get(f'photo{i}') for i in range(1, MAX_PHOTOS + 1)][:max(0, MAX_PHOTOS-existing)]
             for filename, order in save_uploaded_photos(product_id, files, existing + 1):
-                conn.execute('INSERT INTO photos (product_id, filename, sort_order) VALUES (?,?,?)', (product_id, filename, order))
-        return redirect(url_for('product_detail', product_id=product_id))
-
-    return render_template('form.html', product=product, photos=photos)
+                conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)', (product_id, filename, order))
+    except sqlite3.IntegrityError:
+        flash('That barcode is already registered.', 'error')
+        return render_template('form.html', product=product, photos=photos)
+    return redirect(url_for('product_detail', product_id=product_id))
 
 
 @app.post('/product/<int:product_id>/toggle')
@@ -229,9 +225,9 @@ def toggle_status(product_id):
         if not product:
             abort(404)
         if product['status'] == 'Available':
-            conn.execute('UPDATE products SET status="Sold", date_sold=? WHERE id=?', (datetime.now().isoformat(timespec='seconds'), product_id))
+            conn.execute('UPDATE products SET status="Sold",date_sold=? WHERE id=?', (datetime.now().isoformat(timespec='seconds'), product_id))
         else:
-            conn.execute('UPDATE products SET status="Available", date_sold=NULL WHERE id=?', (product_id,))
+            conn.execute('UPDATE products SET status="Available",date_sold=NULL WHERE id=?', (product_id,))
     return redirect(request.referrer or url_for('index'))
 
 
@@ -242,10 +238,8 @@ def delete_product(product_id):
         conn.execute('DELETE FROM photos WHERE product_id=?', (product_id,))
         conn.execute('DELETE FROM products WHERE id=?', (product_id,))
     for photo in photos:
-        try:
-            (PHOTO_DIR / photo['filename']).unlink(missing_ok=True)
-        except OSError:
-            pass
+        try: (PHOTO_DIR / photo['filename']).unlink(missing_ok=True)
+        except OSError: pass
     return redirect(url_for('index'))
 
 
@@ -258,12 +252,10 @@ def delete_photo(photo_id):
         product_id = photo['product_id']
         conn.execute('DELETE FROM photos WHERE id=?', (photo_id,))
         remaining = conn.execute('SELECT id FROM photos WHERE product_id=? ORDER BY sort_order,id', (product_id,)).fetchall()
-        for i, row in enumerate(remaining, start=1):
+        for i, row in enumerate(remaining, 1):
             conn.execute('UPDATE photos SET sort_order=? WHERE id=?', (i, row['id']))
-    try:
-        (PHOTO_DIR / photo['filename']).unlink(missing_ok=True)
-    except OSError:
-        pass
+    try: (PHOTO_DIR / photo['filename']).unlink(missing_ok=True)
+    except OSError: pass
     return redirect(url_for('edit_product', product_id=product_id))
 
 
@@ -272,9 +264,39 @@ def photo_file(filename):
     return send_from_directory(PHOTO_DIR, filename)
 
 
+@app.route('/updates')
+def updates():
+    latest = latest_version()
+    status_path = UPDATER_DIR / 'status'
+    try:
+        updater_status = status_path.read_text().strip() or 'unknown'
+    except OSError:
+        updater_status = 'not started'
+    return render_template('updates.html', current_version=VERSION, latest_version=latest,
+                           update_available=bool(latest and version_tuple(latest) > version_tuple(VERSION)),
+                           updater_status=updater_status, update_log=tail(UPDATER_DIR / 'update.log'))
+
+
+@app.post('/updates/install')
+def install_update():
+    latest = latest_version()
+    if not latest:
+        flash('Could not contact GitHub. Update was not requested.', 'error')
+        return redirect(url_for('updates'))
+    if version_tuple(latest) <= version_tuple(VERSION):
+        flash('This installation is already up to date.', 'info')
+        return redirect(url_for('updates'))
+    try:
+        (UPDATER_DIR / 'update.request').write_text(datetime.now().isoformat(timespec='seconds'))
+        flash(f'Update to v{latest} requested. The app may briefly restart.', 'success')
+    except OSError as exc:
+        flash(f'Could not request update: {exc}', 'error')
+    return redirect(url_for('updates'))
+
+
 @app.route('/health')
 def health():
-    return {'service': 'raes-bits-and-bobbins-stock', 'version': '0.0.1', 'status': 'ok'}
+    return {'service':'raes-bits-and-bobbins-stock','version':VERSION,'status':'ok'}
 
 
 init_db()
