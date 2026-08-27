@@ -14,6 +14,7 @@ from app import tenant
 from app.features_v010 import configure as configure_features
 from app.v010_extras import configure as configure_extras
 from app.update_ui import configure as configure_update_ui
+from app.tenant_runtime import configure as configure_tenant_runtime
 
 
 class DynamicPath:
@@ -85,6 +86,7 @@ photoshoot.db = tenant_db
 configure_features(server.app, server)
 configure_extras(server.app, server)
 configure_update_ui(server.app, server.UPDATER_DIR, current_version)
+configure_tenant_runtime(server.app, server, tenant)
 
 app = server.app
 
@@ -95,6 +97,9 @@ def initialise_owner_inventory():
         photoshoot.init_tables()
     except Exception:
         pass
+    ensure_features = app.extensions.get('tenant_ensure_feature_schema')
+    if ensure_features:
+        ensure_features()
 
 
 @app.context_processor
