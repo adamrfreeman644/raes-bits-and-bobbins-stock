@@ -3,16 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{% block title %}Rae's Bits and Bobbins Stock{% endblock %}</title>
+  <title>{% block title %}{{ business_name or 'Stock Manager' }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='detail-fix.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='v010.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='accounts.css') }}">
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="{{ url_for('dashboard') }}">Rae's Bits and Bobbins Stock</a>
+  <a class="brand" href="{{ url_for('dashboard') if current_account else url_for('login') }}">{{ business_name or 'Stock Manager' }}</a>
   <div class="menu-wrap">
     <span class="version">v{{ app_version }}</span>
+    {% if current_account %}
     <button class="burger" id="burgerButton" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
     <nav class="burger-menu" id="burgerMenu" aria-hidden="true">
       <a href="{{ url_for('dashboard') }}"><strong>Dashboard</strong><span>Today, sales and current event</span></a>
@@ -26,7 +28,11 @@
       <a href="{{ url_for('backups') }}"><strong>Backups</strong><span>Create, download and restore</span></a>
       <a href="{{ url_for('archive') }}"><strong>Archive</strong><span>Retired products</span></a>
       <a href="{{ url_for('updates') }}"><strong>Updates</strong><span>Check and install</span></a>
+      <div class="menu-divider"></div>
+      <a href="{{ url_for('account_settings') }}"><strong>Owner Account</strong><span>Business name and password</span></a>
+      <form method="post" action="{{ url_for('logout') }}" class="menu-logout"><button type="submit">Sign out</button></form>
     </nav>
+    {% endif %}
   </div>
 </header>
 <main class="shell">
