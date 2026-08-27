@@ -1,23 +1,30 @@
-# Rae's Bits and Bobbins Stock v0.0.1
+# Rae's Bits and Bobbins Stock v0.1.0
 
-Bare-bones self-hosted inventory database designed for a barcode scanner/Android device and desktop browser.
+Self-hosted stock and sales manager designed for barcode-scanner Android devices, tablets and desktop browsers.
 
-## Included
+## v0.1.0 highlights
 
-- SQLite inventory database
-- Card view and Airtable-style table view
-- Add/edit/delete products
-- Barcode-first registration screen
-- Item, main colour, secondary colour, pattern, price, barcode and status
-- Available / Sold toggle with sold date
-- Up to 5 product photos
-- Main photo used as card/table thumbnail
-- Search and status filtering
-- Responsive scanner/mobile UI
-- Persistent database and photo folders separated from application code
-- `/health` endpoint
+- Parent products with multiple unique physical-item barcodes
+- Quantity derived from available physical barcodes
+- PayPal POS CSV export/import with one row per physical barcode
+- Dashboard with today's sales, revenue, available stock and retail stock value
+- Permanent sales history that keeps barcode, product name, sale price, source and event
+- Events / pop-up shops with scheduled dates plus manual Start / End controls
+- PayPal imports can be assigned to a specific event even when imported later
+- Activity log for important stock, sale, event, photo, backup and product changes
+- Small Undo control for supported recent actions such as sales and archive
+- Normal Inventory search also searches physical barcodes; an exact barcode scan opens the product directly
+- Product archive and restore
+- Permanent product deletion remains available for genuine mistakes; products with sales history are protected from deletion
+- Automatic daily SQLite backups
+- Manual Create Backup Now, Download, Restore and Delete controls
+- Safety backup created before restoring a backup
+- Photo management with Download, Download Original, Set Main, Crop, Reset Crop and Remove
+- Cropping preserves the original photo and intentionally provides no further image editing tools
+- Photo Shoot workflow continues to resolve any physical item barcode back to its parent product
+- In-app updater with database backup before updates
 
-## Install from GitHub
+## Install
 
 ```bash
 git clone https://github.com/adamrfreeman644/raes-bits-and-bobbins-stock.git
@@ -28,34 +35,36 @@ docker compose up -d --build
 Open:
 
 ```text
-http://SERVER-IP:8080
+http://SERVER-IP:1975
 ```
 
 Health check:
 
 ```text
-http://SERVER-IP:8080/health
+http://SERVER-IP:1975/health
 ```
 
 ## Persistent data
 
 - `./data/inventory.db` — SQLite database
-- `./photos/` — uploaded product images
-- `./backups/` — reserved for future backups
+- `./photos/` — current product photos and preserved crop originals
+- `./backups/` — automatic, manual, updater and pre-restore database backups
+- `./updater-state/` — updater status and log files
 
-These folders are mounted separately so future application updates can replace the app without replacing inventory data.
+These directories are mounted separately from the application image so rebuilding or updating the container does not replace inventory data.
 
-## Future update path
+## Sales and events
 
-The project is structured so later versions can use the same GitHub/manual-update model throughout. Inventory data and photos remain persistent and are not stored in the release code.
+A physical barcode changing from Available to Sold creates a permanent sales transaction. The transaction stores the price at the time of sale rather than reading the product's current price later.
 
-## v0.0.1 intentionally does not include
+If an event is active, the sale is attached to that event. Scheduled events activate automatically while their date range is current unless manually ended. PayPal CSV imports can also be explicitly assigned to an event so a file imported after a market closes still records those sales against the correct show.
 
-- Shopify/Etsy/PayPal integration
-- CSV shop export
-- GitHub in-app updater
-- Login/PIN system
-- Configurable dropdown lists
-- Automated backups
+Restoring an item marks the corresponding sale as returned; it does not erase the original transaction.
 
-Those are intended for later versions after the core workflow is tested.
+## Backups
+
+The application creates one automatic backup per day when it is in use. A database backup is also made by the updater before installing new code. The Backups page can create additional backups, download them and restore them. Restoring first creates a safety copy of the current database.
+
+## Updating
+
+The updater checks GitHub for the `VERSION` file but never automatically installs a release. Installation remains a deliberate button press in the web interface.
