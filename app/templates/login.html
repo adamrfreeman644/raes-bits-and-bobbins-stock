@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Sign in · Stock Manager{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <section class="auth-card">
+    <div class="auth-icon">🔐</div>
+    <h1>Owner sign in</h1>
+    <p class="auth-intro">Sign in to open your business inventory.</p>
+    <form method="post" class="auth-form">
+      <label>Email<input type="email" name="email" autocomplete="email" required autofocus></label>
+      <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="btn primary auth-primary" type="submit">Sign in</button>
+    </form>
+    <div class="auth-secondary">
+      <span>Setting up another business?</span>
+      <a class="btn" href="{{ url_for('new_owner_account') }}">Create another owner account</a>
+    </div>
+  </section>
+</div>
+{% endblock %}
