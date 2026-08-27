@@ -12,12 +12,13 @@
 <section class="product-info">
   <h2>Import sales / stock back</h2>
   <p>Upload the PayPal stock CSV after sales. Rae's Stock matches each row by <strong>Barcode</strong> or <strong>SKU</strong>.</p>
-  <p><strong>In Stock = 0</strong> marks that exact physical barcode Sold. <strong>In Stock &gt; 0</strong> restores it Available. Parent product quantities are recalculated automatically.</p>
-  <form method="post" action="{{ url_for('paypal_import') }}" enctype="multipart/form-data">
+  <p><strong>In Stock = 0</strong> records a sale for that exact physical item. <strong>In Stock &gt; 0</strong> restores it Available.</p>
+  <form class="stack-form" method="post" action="{{ url_for('paypal_import') }}" enctype="multipart/form-data">
+    <label>Sales belong to<select name="event_id"><option value="">Automatic / no specific event</option>{% for e in events or [] %}<option value="{{ e.id }}" {{ 'selected' if active_event and active_event.id == e.id }}>{{ e.name }} · {{ e.start_date }} to {{ e.end_date }}</option>{% endfor %}</select></label>
     <label>PayPal stock CSV<input type="file" name="file" accept=".csv,text/csv" required></label>
     <button class="btn primary big" type="submit">Import Item Stock</button>
   </form>
 </section>
 </div>
-<div class="empty"><h2>CSV bridge</h2><p>This release uses CSV exchange rather than a direct PayPal API connection. One exported row represents one physical barcode, so re-import can identify exactly which item was sold.</p></div>
+<div class="empty"><h2>CSV bridge</h2><p>One exported row represents one physical barcode, so re-import can identify exactly which item was sold. Choosing an event above keeps pop-up-shop sales grouped correctly even when you import the file later.</p></div>
 {% endblock %}
