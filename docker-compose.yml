@@ -5,11 +5,19 @@ services:
     ports:
       - "1975:1975"
     environment:
-      - SECRET_KEY=change-this-before-production
       - DATA_DIR=/data
       - PHOTO_DIR=/photos
       - BACKUP_DIR=/backups
       - UPDATER_DIR=/updater
+      - AUTH_ENABLED=${AUTH_ENABLED:-false}
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_REDIRECT_URI=${OIDC_REDIRECT_URI:-}
+      - OIDC_POST_LOGOUT_REDIRECT_URI=${OIDC_POST_LOGOUT_REDIRECT_URI:-}
+      - OIDC_ACCOUNT_URL=${OIDC_ACCOUNT_URL:-}
+      - OIDC_AUTO_PROVISION=${OIDC_AUTO_PROVISION:-true}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
     volumes:
       - ./data:/data
       - ./photos:/photos
