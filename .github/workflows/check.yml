@@ -1,0 +1,35 @@
+name: Check Inventory Manager changes
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Check Python syntax
+        run: python -m compileall -q app tests
+      - name: Subject identity test
+        run: python -m pytest -q tests/test_shared_auth.py::test_oidc_subject_becomes_permanent_identity
+      - name: Tenant isolation test
+        run: python -m pytest -q tests/test_shared_auth.py::test_auto_provisioned_accounts_have_isolated_storage
+      - name: No local OIDC password test
+        run: python -m pytest -q tests/test_shared_auth.py::test_oidc_only_account_does_not_store_a_password
+      - name: Duplicate subject test
+        run: python -m pytest -q tests/test_shared_auth.py::test_duplicate_subject_cannot_map_to_two_tenants
+      - name: Fail-closed config test
+        run: python -m pytest -q tests/test_shared_auth.py::test_auth_enabled_with_missing_oidc_config_is_detected
+      - name: Popup continuity test
+        run: python -m pytest -q tests/test_shared_auth.py::test_popup_login_keeps_main_page_available
+      - name: Validate Compose
+        run: docker compose config >/dev/null
