@@ -37,6 +37,33 @@ log "Dependencies OK: $(git --version); $(docker --version); $(docker compose ve
 echo "idle" > "$STATUS"
 log "Updater service ready"
 
+backup_databases(){
+  TS="$1"
+  mkdir -p "$PROJECT/backups/system"
+
+  if [ -f "$PROJECT/data/platform.db" ]; then
+    cp "$PROJECT/data/platform.db" "$PROJECT/backups/system/platform-$TS.db" || return 1
+    log "Owner account database backup created"
+  fi
+
+  if [ -f "$PROJECT/data/inventory.db" ]; then
+    cp "$PROJECT/data/inventory.db" "$PROJECT/backups/system/legacy-inventory-$TS.db" || return 1
+    log "Legacy inventory backup created"
+  fi
+
+  if [ -d "$PROJECT/data/accounts" ]; then
+    for DB in "$PROJECT"/data/accounts/*/inventory.db; do
+      [ -f "$DB" ] || continue
+      ACCOUNT_ID=$(basename "$(dirname "$DB")")
+      DEST="$PROJECT/backups/accounts/$ACCOUNT_ID"
+      mkdir -p "$DEST"
+      cp "$DB" "$DEST/update-$TS.db" || return 1
+      log "Inventory backup created for owner account $ACCOUNT_ID"
+    done
+  fi
+  return 0
+}
+
 while true; do
   if [ -f "$REQ" ]; then
     rm -f "$REQ"
@@ -44,17 +71,13 @@ while true; do
     TS=$(date '+%Y%m%d-%H%M%S')
     log "Update requested"
 
-    if [ -f "$PROJECT/data/inventory.db" ]; then
-      if cp "$PROJECT/data/inventory.db" "$PROJECT/backups/inventory-$TS.db"; then
-        log "Database backup created: inventory-$TS.db"
-      else
-        log "ERROR: database backup failed"
-        echo "failed: backup" > "$STATUS"
-        sleep 2
-        continue
-      fi
+    if backup_databases "$TS"; then
+      log "Safety backups complete"
     else
-      log "No database file found yet; continuing"
+      log "ERROR: database backup failed"
+      echo "failed: backup" > "$STATUS"
+      sleep 2
+      continue
     fi
 
     cd "$PROJECT" || {
@@ -83,7 +106,6 @@ while true; do
       continue
     fi
 
-    # Build first while the current app keeps running.
     if ! docker compose -f "$PROJECT/docker-compose.yml" build inventory-manager >>"$LOG" 2>&1; then
       log "ERROR: Inventory Manager image build failed"
       echo "failed: build" > "$STATUS"
@@ -92,8 +114,6 @@ while true; do
     fi
     log "Inventory Manager image built successfully"
 
-    # Replace only the app container. Explicit removal avoids Compose project-name
-    # conflicts when the stack was originally created from a different working directory.
     if docker ps -a --format '{{.Names}}' | grep -qx 'inventory-manager'; then
       log "Removing previous inventory-manager container"
       if ! docker rm -f inventory-manager >>"$LOG" 2>&1; then
