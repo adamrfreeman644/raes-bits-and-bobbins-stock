@@ -8,6 +8,7 @@ services:
       - SECRET_KEY=change-this-before-production
       - DATA_DIR=/data
       - PHOTO_DIR=/photos
+      - BACKUP_DIR=/backups
       - UPDATER_DIR=/updater
     volumes:
       - ./data:/data
