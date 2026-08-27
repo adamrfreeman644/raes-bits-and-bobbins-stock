@@ -38,6 +38,18 @@ class DynamicPath:
     def __truediv__(self, other):
         return DynamicPath(lambda: self._path() / other, self.fallback / other)
 
+    @property
+    def parent(self):
+        return DynamicPath(lambda: self._path().parent, self.fallback.parent)
+
+    @property
+    def suffix(self):
+        return self._path().suffix
+
+    @property
+    def name(self):
+        return self._path().name
+
     def mkdir(self, *args, **kwargs):
         return self._path().mkdir(*args, **kwargs)
 
@@ -49,6 +61,12 @@ class DynamicPath:
 
     def glob(self, pattern):
         return self._path().glob(pattern)
+
+    def stat(self):
+        return self._path().stat()
+
+    def unlink(self, *args, **kwargs):
+        return self._path().unlink(*args, **kwargs)
 
     def read_text(self, *args, **kwargs):
         return self._path().read_text(*args, **kwargs)
