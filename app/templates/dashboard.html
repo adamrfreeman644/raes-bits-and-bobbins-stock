@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Dashboard</h1><p class="muted">A simple view of today, stock and recent activity.</p></div><a class="btn primary" href="{{ url_for('index') }}">Open Inventory</a></div>
+{% if active_event %}
+<section class="event-banner"><div><span class="eyebrow">Selling event</span><h2>{{ active_event.name }}</h2><p>{{ active_event.location or 'No location set' }} · {{ active_event.start_date }} to {{ active_event.end_date }}</p></div><div class="event-banner-total"><strong>{{ event_totals.sales if event_totals else 0 }}</strong><span>sales</span><strong>{{ (event_totals.revenue if event_totals else 0)|money }}</strong><span>revenue</span></div></section>
+{% endif %}
+<div class="dash-grid">
+  <section class="metric-card"><span>Sales today</span><strong>{{ today_sales.sales }}</strong><small>{{ today_sales.revenue|money }} revenue</small></section>
+  <section class="metric-card"><span>Items available</span><strong>{{ stock.qty }}</strong><small>{{ stock.value|money }} retail value</small></section>
+  <section class="metric-card"><span>Current event</span><strong class="metric-text">{{ active_event.name if active_event else 'None' }}</strong><small><a href="{{ url_for('events') }}">Manage events</a></small></section>
+</div>
+<div class="dash-two">
+<section class="panel-card"><div class="section-head"><h2>Recent sales</h2><a href="{{ url_for('sales_history') }}">View all</a></div>{% if recent_sales %}<div class="simple-list">{% for s in recent_sales %}<div class="simple-row"><div><strong>{{ s.product_name }}</strong><span>{{ s.barcode }} · {{ s.source }}{% if s.event_name %} · {{ s.event_name }}{% endif %}</span></div><div class="row-right"><strong>{{ s.price_pence|money }}</strong><span>{{ s.sold_at[5:16]|replace('T',' ') }}{% if s.returned_at %} · Returned{% endif %}</span></div></div>{% endfor %}</div>{% else %}<p class="muted">No sales recorded yet.</p>{% endif %}</section>
+<section class="panel-card"><div class="section-head"><h2>Recent activity</h2><a href="{{ url_for('activity') }}">View log</a></div>{% if recent_activity %}<div class="simple-list">{% for a in recent_activity %}<div class="simple-row"><div><strong>{{ a.action }}</strong><span>{{ a.description }}</span></div><div class="row-right"><span>{{ a.created_at[5:16]|replace('T',' ') }}</span>{% if a.undo_kind and not a.undone_at %}<form method="post" action="{{ url_for('undo_activity', log_id=a.id) }}"><button class="undo-mini" type="submit">Undo</button></form>{% endif %}</div></div>{% endfor %}</div>{% else %}<p class="muted">Nothing logged yet.</p>{% endif %}</section>
+</div>
+{% endblock %}
