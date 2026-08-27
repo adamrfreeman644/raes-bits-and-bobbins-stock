@@ -1,8 +1,12 @@
+import csv
+import io
 import os
+import shutil
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
-from flask import flash, redirect, render_template, request, session, url_for
+from flask import Response, abort, flash, redirect, render_template, request, send_from_directory, session, url_for
 
 from app import server
 from app import photoshoot
@@ -42,6 +46,9 @@ class DynamicPath:
     def iterdir(self):
         return self._path().iterdir()
 
+    def glob(self, pattern):
+        return self._path().glob(pattern)
+
     def read_text(self, *args, **kwargs):
         return self._path().read_text(*args, **kwargs)
 
@@ -58,9 +65,7 @@ except OSError:
 server.VERSION = current_version
 server.app.jinja_env.globals['app_version'] = current_version
 
-# Make every existing feature transparently use the currently logged-in owner's
-# isolated database and photo directory. The proxy is resolved per request, so
-# different owners cannot share the same SQLite file even with multiple workers.
+# Every existing inventory feature now resolves storage from the logged-in owner.
 server.DB_PATH = DynamicPath(tenant.account_db_path, tenant.DATA_DIR / 'inventory.db')
 server.PHOTO_DIR = DynamicPath(tenant.account_photo_dir, tenant.PHOTO_ROOT)
 photoshoot.DB_PATH = server.DB_PATH
@@ -111,15 +116,10 @@ def require_owner_login():
     endpoint = request.endpoint or ''
     if endpoint in PUBLIC_ENDPOINTS or endpoint.startswith('static'):
         return None
-
     if tenant.account_count() == 0:
         return redirect(url_for('setup'))
-
-    account = tenant.current_account()
-    if not account:
+    if not tenant.current_account():
         return redirect(url_for('login', next=request.path))
-
-    # Ensure this owner's private schema exists before any existing route opens it.
     initialise_owner_inventory()
     return None
 
@@ -128,7 +128,6 @@ def require_owner_login():
 def setup():
     if tenant.account_count() > 0:
         return redirect(url_for('login'))
-
     if request.method == 'POST':
         try:
             account_id = tenant.create_account(
@@ -140,13 +139,11 @@ def setup():
         except ValueError as exc:
             flash(str(exc), 'error')
             return render_template('setup.html')
-
         session.clear()
         session['account_id'] = account_id
         initialise_owner_inventory()
         flash('Your owner account is ready. Existing stock has been kept with this account.', 'success')
         return redirect(url_for('index'))
-
     return render_template('setup.html')
 
 
@@ -154,7 +151,6 @@ def setup():
 def login():
     if tenant.account_count() == 0:
         return redirect(url_for('setup'))
-
     if request.method == 'POST':
         account = tenant.verify_login(request.form.get('email', ''), request.form.get('password', ''))
         if not account:
@@ -167,7 +163,6 @@ def login():
         if not target.startswith('/'):
             target = url_for('index')
         return redirect(target)
-
     return render_template('login.html')
 
 
@@ -203,7 +198,6 @@ def account_settings():
     account = tenant.current_account()
     if not account:
         return redirect(url_for('login'))
-
     if request.method == 'POST':
         action = request.form.get('action')
         try:
@@ -220,5 +214,84 @@ def account_settings():
         except ValueError as exc:
             flash(str(exc), 'error')
         return redirect(url_for('account_settings'))
-
     return render_template('account.html', account=account)
+
+
+# --- Tenant-aware overrides for older shared-storage feature routes ---
+def owner_backup_path(name):
+    return tenant.account_backup_dir() / Path(name).name
+
+
+def make_owner_backup(prefix='manual'):
+    source = tenant.account_db_path()
+    destination = tenant.account_backup_dir() / f"{prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db"
+    if source.exists():
+        shutil.copy2(source, destination)
+    return destination
+
+
+def owner_backups():
+    directory = tenant.account_backup_dir()
+    files = sorted(directory.glob('*.db'), key=lambda p: p.stat().st_mtime, reverse=True)
+    return render_template('backups.html', backups=[
+        {'name': p.name, 'size': p.stat().st_size, 'mtime': datetime.fromtimestamp(p.stat().st_mtime)}
+        for p in files
+    ])
+
+
+def owner_backup_create():
+    make_owner_backup('manual')
+    flash('Backup created.', 'success')
+    return redirect(url_for('backups'))
+
+
+def owner_backup_download(name):
+    path = owner_backup_path(name)
+    if not path.exists():
+        abort(404)
+    return send_from_directory(tenant.account_backup_dir(), path.name, as_attachment=True)
+
+
+def owner_backup_restore(name):
+    source_path = owner_backup_path(name)
+    if not source_path.exists():
+        abort(404)
+    make_owner_backup('before-restore')
+    source = sqlite3.connect(source_path)
+    destination = sqlite3.connect(tenant.account_db_path())
+    try:
+        source.backup(destination)
+    finally:
+        destination.close()
+        source.close()
+    flash('Backup restored. A safety copy of the previous database was kept.', 'success')
+    return redirect(url_for('dashboard'))
+
+
+def owner_backup_delete(name):
+    owner_backup_path(name).unlink(missing_ok=True)
+    return redirect(url_for('backups'))
+
+
+app.view_functions['backups'] = owner_backups
+app.view_functions['backup_create'] = owner_backup_create
+app.view_functions['backup_download'] = owner_backup_download
+app.view_functions['backup_restore'] = owner_backup_restore
+app.view_functions['backup_delete'] = owner_backup_delete
+
+
+def generic_paypal_export():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Name', 'Price', 'Barcode', 'SKU', 'In Stock'])
+    with tenant_db() as conn:
+        rows = conn.execute('''SELECT p.item,p.price_pence,ib.barcode,ib.state
+                               FROM item_barcodes ib JOIN products p ON p.id=ib.product_id
+                               ORDER BY p.id,ib.id''').fetchall()
+    for row in rows:
+        writer.writerow([row['item'], f"{row['price_pence'] / 100:.2f}", row['barcode'], row['barcode'], 1 if row['state'] == 'Available' else 0])
+    filename = f"stock-paypal-{datetime.now().strftime('%Y%m%d-%H%M')}.csv"
+    return Response(output.getvalue(), mimetype='text/csv', headers={'Content-Disposition': f'attachment; filename={filename}'})
+
+
+app.view_functions['paypal_export'] = generic_paypal_export
