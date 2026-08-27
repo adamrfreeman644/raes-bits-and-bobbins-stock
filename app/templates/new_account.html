@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}New Owner Account · Stock Manager{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <section class="auth-card">
+    <div class="auth-icon">＋</div>
+    <h1>Create another business account</h1>
+    <p class="auth-intro">This creates a completely separate inventory, photo library and data area.</p>
+    <form method="post" class="auth-form">
+      <label>Business name<input name="business_name" autocomplete="organization" required></label>
+      <label>Owner email<input type="email" name="email" autocomplete="email" required></label>
+      <label>Password<input type="password" name="password" minlength="8" autocomplete="new-password" required></label>
+      <button class="btn primary auth-primary" type="submit">Create Account</button>
+      <a class="btn auth-primary" href="{{ url_for('login') }}">Back to sign in</a>
+    </form>
+  </section>
+</div>
+{% endblock %}
