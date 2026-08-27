@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Backups{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Backups</h1><p class="muted">A daily backup is created automatically. You can also make one before a big stock change.</p></div><form method="post" action="{{ url_for('backup_create') }}"><button class="btn primary big" type="submit">Create Backup Now</button></form></div>
+<section class="panel-card"><h2>Saved backups</h2>{% if backups %}<div class="simple-list">{% for b in backups %}<div class="simple-row"><div><strong>{{ b.name }}</strong><span>{{ (b.size / 1024)|round(1) }} KB · {{ b.mtime.strftime('%d %b %Y %H:%M') }}</span></div><div class="backup-actions"><a class="btn" href="{{ url_for('backup_download', name=b.name) }}">Download</a><form method="post" action="{{ url_for('backup_restore', name=b.name) }}" onsubmit="return confirm('Restore this backup? A safety backup of the current database will be made first.')"><button class="btn" type="submit">Restore</button></form><form method="post" action="{{ url_for('backup_delete', name=b.name) }}" onsubmit="return confirm('Delete this backup file?')"><button class="btn danger" type="submit">Delete</button></form></div></div>{% endfor %}</div>{% else %}<p class="muted">No backups yet.</p>{% endif %}</section>
+{% endblock %}
