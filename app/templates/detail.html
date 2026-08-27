@@ -4,6 +4,7 @@
 <div class="page-head detail-page-head">
   <a class="btn" href="{{ url_for('index') }}">← Inventory</a>
   <div class="head-actions">
+    <a class="btn" href="{{ url_for('manage_photos', product_id=product.id) }}">Manage Photos</a>
     <form method="post" action="{{ url_for('duplicate_product', product_id=product.id) }}"><button class="btn" type="submit">Duplicate</button></form>
     <a class="btn" href="{{ url_for('edit_product', product_id=product.id) }}">Edit</a>
   </div>
@@ -14,31 +15,26 @@
   </section>
   <section class="product-info">
     <div class="product-title-row"><div><div class="product-code">Product #{{ product.id }}</div><h1>{{ product.item }}</h1></div><span class="status {{ product.status|lower }}">{{ product.status }}</span></div>
+    {% if product.archived_at %}<div class="archive-notice">Archived {{ product.archived_at[:10] }} · <form method="post" action="{{ url_for('restore_archive', product_id=product.id) }}"><button class="undo-mini" type="submit">Restore</button></form></div>{% endif %}
     <div class="price-stock-row"><div class="detail-price">{{ product.price_pence|money }}</div><div class="stock-pill"><span>Available</span><strong>{{ product.quantity }}</strong></div></div>
     <dl class="product-details"><dt>Main colour</dt><dd>{{ product.main_colour or '—' }}</dd><dt>Secondary colour</dt><dd>{{ product.secondary_colour or '—' }}</dd><dt>Pattern</dt><dd>{{ product.pattern or '—' }}</dd><dt>Date added</dt><dd>{{ product.date_added[:10] }}</dd>{% if product.notes %}<dt>Notes</dt><dd>{{ product.notes }}</dd>{% endif %}</dl>
 
     <div class="barcode-manager">
       <div class="barcode-manager-head"><div><h2>Item barcodes</h2><p>Each physical item has its own barcode.</p></div><strong>{{ barcodes|length }} total</strong></div>
-      <form class="barcode-add-form" method="post" action="{{ url_for('add_item_barcode', product_id=product.id) }}"><input id="addBarcode" name="barcode" autocomplete="off" placeholder="Scan another item barcode"><button class="btn primary" type="submit">Add Barcode</button></form>
+      {% if not product.archived_at %}<form class="barcode-add-form" method="post" action="{{ url_for('add_item_barcode', product_id=product.id) }}"><input id="addBarcode" name="barcode" autocomplete="off" placeholder="Scan another item barcode"><button class="btn primary" type="submit">Add Barcode</button></form>{% endif %}
       <div class="barcode-list">
         {% for b in barcodes %}
         <div class="barcode-row">
-          <form class="barcode-edit-form" method="post" action="{{ url_for('edit_item_barcode', barcode_id=b.id) }}">
-            <input name="barcode" value="{{ b.barcode }}" aria-label="Barcode">
-            <button class="btn" type="submit">Save</button>
-          </form>
-          <div class="barcode-row-actions">
-            <span class="status {{ b.state|lower }}">{{ b.state }}</span>
-            <form method="post" action="{{ url_for('toggle_item_barcode', barcode_id=b.id) }}"><button class="btn" type="submit">{{ 'Mark Sold' if b.state == 'Available' else 'Restore' }}</button></form>
-            <form method="post" action="{{ url_for('delete_item_barcode', barcode_id=b.id) }}" onsubmit="return confirm('Remove this physical barcode from the product?')"><button class="btn danger" type="submit">Remove</button></form>
-          </div>
+          <form class="barcode-edit-form" method="post" action="{{ url_for('edit_item_barcode', barcode_id=b.id) }}"><input name="barcode" value="{{ b.barcode }}" aria-label="Barcode"><button class="btn" type="submit">Save</button></form>
+          <div class="barcode-row-actions"><span class="status {{ b.state|lower }}">{{ b.state }}</span><form method="post" action="{{ url_for('toggle_item_barcode', barcode_id=b.id) }}"><button class="btn" type="submit">{{ 'Mark Sold' if b.state == 'Available' else 'Restore' }}</button></form><form method="post" action="{{ url_for('delete_item_barcode', barcode_id=b.id) }}" onsubmit="return confirm('Remove this physical barcode from the product?')"><button class="btn danger" type="submit">Remove</button></form></div>
         </div>
         {% else %}<div class="empty-current">No item barcodes assigned.</div>{% endfor %}
       </div>
     </div>
 
-    <div class="stock-actions"><form method="post" action="{{ url_for('sell_one', product_id=product.id) }}"><button class="btn primary action-btn" type="submit" {{ 'disabled' if product.quantity == 0 }}>Sell One −1</button></form><form method="post" action="{{ url_for('restock_one', product_id=product.id) }}"><button class="btn action-btn" type="submit">Restore One +1</button></form></div>
-    <div class="secondary-actions"><form method="post" action="{{ url_for('toggle_status', product_id=product.id) }}"><button class="btn action-btn" type="submit">{{ 'Mark All Sold' if product.status == 'Available' else 'Restore All' }}</button></form><form method="post" action="{{ url_for('delete_product', product_id=product.id) }}" onsubmit="return confirm('Delete this product permanently?')"><button class="btn danger action-btn" type="submit">Delete Product</button></form></div>
+    {% if not product.archived_at %}<div class="stock-actions"><form method="post" action="{{ url_for('sell_one', product_id=product.id) }}"><button class="btn primary action-btn" type="submit" {{ 'disabled' if product.quantity == 0 }}>Sell One −1</button></form><form method="post" action="{{ url_for('restock_one', product_id=product.id) }}"><button class="btn action-btn" type="submit">Restore One +1</button></form></div><div class="secondary-actions"><form method="post" action="{{ url_for('toggle_status', product_id=product.id) }}"><button class="btn action-btn" type="submit">{{ 'Mark All Sold' if product.status == 'Available' else 'Restore All' }}</button></form><form method="post" action="{{ url_for('archive_product', product_id=product.id) }}"><button class="btn action-btn" type="submit">Archive Product</button></form></div>{% endif %}
+
+    <details class="danger-zone"><summary>Permanent deletion</summary><p>Use this only for a product created by mistake. Products with sales history cannot be permanently deleted.</p><form method="post" action="{{ url_for('delete_product', product_id=product.id) }}" onsubmit="return confirm('Permanently delete this product?')"><label>Type DELETE to confirm<input name="confirm" autocomplete="off"></label><button class="btn danger" type="submit">Delete Permanently</button></form></details>
   </section>
 </div>
 {% endblock %}
