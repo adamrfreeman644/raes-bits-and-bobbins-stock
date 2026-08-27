@@ -6,7 +6,7 @@
   <div class="account-grid">
     <section class="panel account-panel">
       <h2>Business name</h2>
-      <p>This is the name shown throughout this account.</p>
+      <p>This is the name shown throughout this isolated inventory account.</p>
       <form method="post" class="auth-form">
         <input type="hidden" name="action" value="business_name">
         <label>Business name<input name="business_name" value="{{ account.business_name }}" required></label>
@@ -14,19 +14,20 @@
       </form>
     </section>
     <section class="panel account-panel">
-      <h2>Change password</h2>
-      <form method="post" class="auth-form">
-        <input type="hidden" name="action" value="password">
-        <label>Current password<input type="password" name="current_password" autocomplete="current-password" required></label>
-        <label>New password<input type="password" name="new_password" minlength="8" autocomplete="new-password" required></label>
-        <button class="btn" type="submit">Change Password</button>
-      </form>
+      <h2>Authentication</h2>
+      <p><strong>Provider:</strong> {{ auth_status.provider }}</p>
+      <p><strong>Status:</strong> {{ 'Connected' if auth_status.connected else 'Configuration error' }}</p>
+      <p><strong>OIDC issuer:</strong> {{ auth_status.issuer_host or 'Not configured' }}</p>
+      <p><strong>Signed in as:</strong> {{ auth_status.current_user or account.email }}</p>
+      <p><strong>Integration:</strong> {{ auth_status.integration_version }}</p>
+      <div class="account-actions"><a class="btn" href="{{ url_for('account_recovery') }}">Password &amp; account security</a></div>
+      <p class="muted">Passwords, password reset, MFA and passkeys are managed by Authentik. Inventory Manager does not store your Authentik password.</p>
     </section>
   </div>
   <section class="panel account-panel">
     <h2>Account isolation</h2>
-    <p>This owner account has its own inventory database and photo library. Other owner accounts on this installation do not use this account's stock data.</p>
-    <div class="account-actions"><a class="btn" href="{{ url_for('new_owner_account') }}">Create Another Business Account</a><form method="post" action="{{ url_for('logout') }}"><button class="btn danger" type="submit">Sign Out</button></form></div>
+    <p>This account has its own inventory database, photo library and backups. Authentication is mapped by the permanent OIDC subject, not by email address.</p>
+    <div class="account-actions"><form method="post" action="{{ url_for('logout') }}"><button class="btn danger" type="submit">Log out</button></form></div>
   </section>
 </div>
 {% endblock %}
