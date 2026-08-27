@@ -98,6 +98,10 @@ def configure(app, server, tenant):
 
     app.extensions['tenant_ensure_feature_schema'] = ensure_feature_schema
 
+    def generic_health():
+        return {'service': 'stock-manager', 'version': server.VERSION, 'status': 'ok'}
+    app.view_functions['health'] = generic_health
+
     @app.before_request
     def tenant_feature_guard():
         if not session.get('account_id'):
