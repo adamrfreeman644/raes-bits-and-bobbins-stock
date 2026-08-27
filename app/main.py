@@ -89,6 +89,7 @@ configure_update_ui(server.app, server.UPDATER_DIR, current_version)
 configure_tenant_runtime(server.app, server, tenant)
 
 app = server.app
+app.secret_key = tenant.session_secret()
 
 
 def initialise_owner_inventory():
