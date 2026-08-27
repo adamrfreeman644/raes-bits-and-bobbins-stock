@@ -6,18 +6,25 @@
   <title>{% block title %}Rae's Bits and Bobbins Stock{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='detail-fix.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='v010.css') }}">
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="{{ url_for('index') }}">Rae's Bits and Bobbins Stock</a>
+  <a class="brand" href="{{ url_for('dashboard') }}">Rae's Bits and Bobbins Stock</a>
   <div class="menu-wrap">
     <span class="version">v{{ app_version }}</span>
     <button class="burger" id="burgerButton" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
     <nav class="burger-menu" id="burgerMenu" aria-hidden="true">
-      <a href="{{ url_for('index') }}"><strong>Inventory</strong><span>Cards and table</span></a>
-      <a href="{{ url_for('new_product') }}"><strong>Add Product</strong><span>Create stock record</span></a>
+      <a href="{{ url_for('dashboard') }}"><strong>Dashboard</strong><span>Today, sales and current event</span></a>
+      <a href="{{ url_for('index') }}"><strong>Inventory</strong><span>Products, stock and barcode search</span></a>
+      <a href="{{ url_for('new_product') }}"><strong>Add Product</strong><span>Create a stock record</span></a>
       <a href="/photo-shoot/"><strong>Photo Shoot</strong><span>Fast scan + batch photos</span></a>
+      <a href="{{ url_for('events') }}"><strong>Events / Pop-up Shops</strong><span>Plan and start selling events</span></a>
+      <a href="{{ url_for('sales_history') }}"><strong>Sales History</strong><span>Permanent sales records</span></a>
+      <a href="{{ url_for('activity') }}"><strong>Activity Log</strong><span>See what changed</span></a>
       <a href="{{ url_for('paypal') }}"><strong>PayPal POS</strong><span>Export / import stock</span></a>
+      <a href="{{ url_for('backups') }}"><strong>Backups</strong><span>Create, download and restore</span></a>
+      <a href="{{ url_for('archive') }}"><strong>Archive</strong><span>Retired products</span></a>
       <a href="{{ url_for('updates') }}"><strong>Updates</strong><span>Check and install</span></a>
     </nav>
   </div>
