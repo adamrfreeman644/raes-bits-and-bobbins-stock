@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Owner Account · {{ business_name }}{% endblock %}
+{% block content %}
+<div class="account-page">
+  <div class="page-head"><div><div class="eyebrow">OWNER ACCOUNT</div><h1>{{ account.business_name }}</h1><p class="muted">{{ account.email }}</p></div></div>
+  <div class="account-grid">
+    <section class="panel account-panel">
+      <h2>Business name</h2>
+      <p>This is the name shown throughout this account.</p>
+      <form method="post" class="auth-form">
+        <input type="hidden" name="action" value="business_name">
+        <label>Business name<input name="business_name" value="{{ account.business_name }}" required></label>
+        <button class="btn primary" type="submit">Save Business Name</button>
+      </form>
+    </section>
+    <section class="panel account-panel">
+      <h2>Change password</h2>
+      <form method="post" class="auth-form">
+        <input type="hidden" name="action" value="password">
+        <label>Current password<input type="password" name="current_password" autocomplete="current-password" required></label>
+        <label>New password<input type="password" name="new_password" minlength="8" autocomplete="new-password" required></label>
+        <button class="btn" type="submit">Change Password</button>
+      </form>
+    </section>
+  </div>
+  <section class="panel account-panel">
+    <h2>Account isolation</h2>
+    <p>This owner account has its own inventory database and photo library. Other owner accounts on this installation do not use this account's stock data.</p>
+    <div class="account-actions"><a class="btn" href="{{ url_for('new_owner_account') }}">Create Another Business Account</a><form method="post" action="{{ url_for('logout') }}"><button class="btn danger" type="submit">Sign Out</button></form></div>
+  </section>
+</div>
+{% endblock %}
