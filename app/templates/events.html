@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}Events / Pop-up Shops{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Events / Pop-up Shops</h1><p class="muted">Sales are automatically attached to the active event.</p></div></div>
+{% if active_event %}<section class="event-banner"><div><span class="eyebrow">Currently selling at</span><h2>{{ active_event.name }}</h2><p>{{ active_event.location or 'No location set' }} · {{ active_event.start_date }} to {{ active_event.end_date }}</p></div><form method="post" action="{{ url_for('end_event', event_id=active_event.id) }}"><button class="btn" type="submit">End Event</button></form></section>{% endif %}
+<div class="dash-two">
+<section class="panel-card"><h2>Add an event</h2><form class="stack-form" method="post"><label>Event name<input name="name" required placeholder="Portishead Christmas Market"></label><label>Location<input name="location" placeholder="Optional"></label><div class="two-col"><label>Start date<input type="date" name="start_date" required></label><label>End date<input type="date" name="end_date" required></label></div><label>Notes<textarea name="notes" rows="3"></textarea></label><button class="btn primary big" type="submit">Save Event</button></form></section>
+<section class="panel-card"><h2>Planned and previous events</h2>{% if events %}<div class="simple-list">{% for e in events %}<div class="event-row"><div><strong>{{ e.name }}</strong><span>{{ e.start_date }} – {{ e.end_date }}{% if e.location %} · {{ e.location }}{% endif %}</span></div><div class="event-actions">{% if not e.manual_active %}<form method="post" action="{{ url_for('start_event', event_id=e.id) }}"><button class="btn" type="submit">Start Now</button></form>{% endif %}<a class="btn" href="{{ url_for('sales_history', event=e.id) }}">Sales</a><form method="post" action="{{ url_for('delete_event', event_id=e.id) }}" onsubmit="return confirm('Delete this event? Events with sales cannot be deleted.')"><button class="btn danger" type="submit">Delete</button></form></div></div>{% endfor %}</div>{% else %}<p class="muted">No events added yet.</p>{% endif %}</section>
+</div>
+{% endblock %}
