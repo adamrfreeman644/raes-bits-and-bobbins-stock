@@ -1,4 +1,5 @@
 import os
+import secrets
 import shutil
 import sqlite3
 from datetime import datetime
@@ -12,9 +13,26 @@ DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR / 'data'))
 PHOTO_ROOT = Path(os.environ.get('PHOTO_DIR', BASE_DIR / 'photos'))
 BACKUP_ROOT = Path(os.environ.get('BACKUP_DIR', BASE_DIR / 'backups'))
 PLATFORM_DB = DATA_DIR / 'platform.db'
+SECRET_FILE = DATA_DIR / '.session_secret'
 
 for path in (DATA_DIR, PHOTO_ROOT, BACKUP_ROOT, DATA_DIR / 'accounts'):
     path.mkdir(parents=True, exist_ok=True)
+
+
+def session_secret():
+    try:
+        value = SECRET_FILE.read_text().strip()
+        if value:
+            return value
+    except OSError:
+        pass
+    value = secrets.token_hex(48)
+    SECRET_FILE.write_text(value)
+    try:
+        SECRET_FILE.chmod(0o600)
+    except OSError:
+        pass
+    return value
 
 
 def platform_db():
