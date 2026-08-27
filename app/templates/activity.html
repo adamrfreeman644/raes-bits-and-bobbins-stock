@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Activity Log{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Activity Log</h1><p class="muted">A record of important changes to stock, sales, events, photos and backups.</p></div></div>
+<section class="panel-card"><div class="simple-list">{% for a in activity %}<div class="simple-row activity-row"><div><strong>{{ a.action }}</strong><span>{{ a.description }}{% if a.barcode %} · {{ a.barcode }}{% endif %}</span></div><div class="row-right"><span>{{ a.created_at[:16]|replace('T',' ') }}</span>{% if a.undo_kind and not a.undone_at %}<form method="post" action="{{ url_for('undo_activity', log_id=a.id) }}"><button class="undo-mini" type="submit">Undo</button></form>{% elif a.undone_at %}<span class="muted">Undone</span>{% endif %}</div></div>{% else %}<p class="muted">No activity recorded yet.</p>{% endfor %}</div></section>
+{% endblock %}
