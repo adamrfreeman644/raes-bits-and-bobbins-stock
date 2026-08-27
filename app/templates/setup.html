@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Set up Stock Manager{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <section class="auth-card">
+    <div class="auth-icon">▦</div>
+    <h1>Set up your stock system</h1>
+    <p class="auth-intro">Create the first owner account. The business name you enter here becomes the name shown throughout this account.</p>
+    <div class="migration-note"><strong>Your existing stock will be kept.</strong><br>The current inventory database and photos will be copied into this first account.</div>
+    <form method="post" class="auth-form">
+      <label>Business name<input name="business_name" autocomplete="organization" required placeholder="Your business name"></label>
+      <label>Owner email<input type="email" name="email" autocomplete="email" required placeholder="owner@example.com"></label>
+      <label>Password<input type="password" name="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></label>
+      <button class="btn primary auth-primary" type="submit">Create Owner Account</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
