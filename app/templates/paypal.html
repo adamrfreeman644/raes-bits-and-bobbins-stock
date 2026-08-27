@@ -1,17 +1,17 @@
 {% extends 'base.html' %}
-{% block title %}PayPal POS{% endblock %}
+{% block title %}PayPal POS · {{ business_name }}{% endblock %}
 {% block content %}
 <div class="page-head"><a class="btn" href="{{ url_for('index') }}">← Inventory</a><h1>PayPal POS</h1></div>
 <div class="detail-layout">
 <section class="product-info">
   <h2>Export physical items</h2>
   <p>Each physical item barcode is exported as its own PayPal POS row. Identical items keep the same product name and price, but each barcode has stock 1 or 0.</p>
-  <p>This lets Rae's Stock keep one parent product while PayPal can scan every individual labelled item.</p>
+  <p>Your inventory keeps one parent product while PayPal can scan every individual labelled item.</p>
   <a class="btn primary big" href="{{ url_for('paypal_export') }}">Export PayPal CSV</a>
 </section>
 <section class="product-info">
   <h2>Import sales / stock back</h2>
-  <p>Upload the PayPal stock CSV after sales. Rae's Stock matches each row by <strong>Barcode</strong> or <strong>SKU</strong>.</p>
+  <p>Upload the PayPal stock CSV after sales. The inventory matches each row by <strong>Barcode</strong> or <strong>SKU</strong>.</p>
   <p><strong>In Stock = 0</strong> records a sale for that exact physical item. <strong>In Stock &gt; 0</strong> restores it Available.</p>
   <form class="stack-form" method="post" action="{{ url_for('paypal_import') }}" enctype="multipart/form-data">
     <label>Sales belong to<select name="event_id"><option value="">Automatic / no specific event</option>{% for e in events or [] %}<option value="{{ e.id }}" {{ 'selected' if active_event and active_event.id == e.id }}>{{ e.name }} · {{ e.start_date }} to {{ e.end_date }}</option>{% endfor %}</select></label>
