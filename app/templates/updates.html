@@ -1,88 +1,39 @@
 {% extends 'base.html' %}
-{% block title %}Updates · Rae's Bits and Bobbins Stock{% endblock %}
+{% block title %}Updates · {{ business_name }}{% endblock %}
 {% block content %}
 <style>
 .update-shell{max-width:780px;margin:0 auto}.update-title{margin:6px 0 4px;font-size:clamp(30px,5vw,42px)}.update-subtitle{margin:0 0 20px;color:var(--muted);font-size:16px}.update-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:14px}.update-state{display:flex;align-items:center;gap:14px}.update-icon{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:25px;font-weight:800;flex:0 0 52px}.update-icon.good{background:#e4f4e8;color:#185d2d}.update-icon.working{background:#fff1df;color:#9a4d10}.update-icon.bad{background:#fbe4e2;color:#811d18}.update-state h2{margin:0 0 4px;font-size:24px}.update-state p{margin:0;color:var(--muted)}.version-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.version-box{background:#f6f7f9;border:1px solid var(--line);border-radius:14px;padding:16px}.version-box span{display:block;color:var(--muted);font-size:13px;margin-bottom:4px}.version-box strong{font-size:24px}.update-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.update-actions .btn{min-height:52px;font-size:17px;font-weight:700}.update-note{margin:15px 0 0;color:var(--muted);line-height:1.45}.last-check{font-size:12px;color:var(--muted);text-align:center;margin-top:10px}.tech-details{margin-top:14px}.tech-details summary{cursor:pointer;font-weight:700;padding:10px 0}.tech-log{white-space:pre-wrap;max-height:280px;overflow:auto;background:#15181c;color:#f3f4f6;border-radius:12px;padding:14px;font:12px/1.45 monospace}.spinner{width:20px;height:20px;border:3px solid rgba(154,77,16,.25);border-top-color:#9a4d10;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:600px){.update-card{padding:16px;border-radius:14px}.version-grid,.update-actions{grid-template-columns:1fr}.update-state{align-items:flex-start}.update-state h2{font-size:21px}}
 </style>
 <div class="update-shell">
   <h1 class="update-title">Software Updates</h1>
-  <p class="update-subtitle">Keep Rae's Stock up to date. Your products and photos are kept safe during updates.</p>
+  <p class="update-subtitle">Keep Stock Manager up to date. Your products and photos are kept safe during updates.</p>
 
   <section class="update-card">
     <div class="update-state">
       <div id="statusIcon" class="update-icon {{ status_kind }}">{% if status_kind == 'bad' %}!{% elif status_kind == 'working' %}<span class="spinner"></span>{% else %}✓{% endif %}</div>
       <div>
         <h2 id="statusLabel">{% if updater_status in ['running','queued','starting'] %}{{ status_label }}{% elif update_available %}Update available{% elif latest_version %}You're up to date{% else %}Unable to check right now{% endif %}</h2>
-        <p id="statusHelp">
-          {% if updater_status in ['running','queued','starting'] %}Please leave this page open. It will refresh automatically.
-          {% elif update_available %}A newer version is ready to install.
-          {% elif latest_version %}No action is needed.
-          {% else %}The stock system will still work normally. Try checking again.
-          {% endif %}
-        </p>
+        <p id="statusHelp">{% if updater_status in ['running','queued','starting'] %}Please leave this page open. It will refresh automatically.{% elif update_available %}A newer version is ready to install.{% elif latest_version %}No action is needed.{% else %}The stock system will still work normally. Try checking again.{% endif %}</p>
       </div>
     </div>
-
     <div class="version-grid">
       <div class="version-box"><span>Installed version</span><strong id="currentVersion">v{{ current_version }}</strong></div>
       <div class="version-box"><span>Latest available</span><strong id="latestVersion">{{ ('v' ~ latest_version) if latest_version else 'Not checked' }}</strong></div>
     </div>
-
     <div class="update-actions">
       <button class="btn" id="checkButton" type="button" onclick="checkAgain()">Check Again</button>
-      <form id="installForm" method="post" action="{{ url_for('install_update') }}">
-        <button id="installButton" class="btn primary full" type="submit" {% if not update_available or updater_status in ['running','queued','starting'] %}disabled{% endif %}>
-          {% if updater_status in ['running','queued','starting'] %}Installing…{% elif update_available %}Install Update{% else %}No Update Needed{% endif %}
-        </button>
-      </form>
+      <form id="installForm" method="post" action="{{ url_for('install_update') }}"><button id="installButton" class="btn primary full" type="submit" {% if not update_available or updater_status in ['running','queued','starting'] %}disabled{% endif %}>{% if updater_status in ['running','queued','starting'] %}Installing…{% elif update_available %}Install Update{% else %}No Update Needed{% endif %}</button></form>
     </div>
-
-    <p class="update-note">Before installing, the system makes a backup of the stock database. The app may disappear for a few seconds while it restarts.</p>
+    <p class="update-note">Before installing, the system makes a backup. The app may disappear for a few seconds while it restarts.</p>
     <div class="last-check">Last checked: <span id="checkedAt">{{ checked_at }}</span></div>
   </section>
-
-  <details class="update-card tech-details">
-    <summary>Technical details</summary>
-    <p><strong>Updater:</strong> <span id="rawStatus">{{ updater_status }}</span></p>
-    <pre id="updateLog" class="tech-log">{{ update_log or 'No updater activity yet.' }}</pre>
-  </details>
+  <details class="update-card tech-details"><summary>Technical details</summary><p><strong>Updater:</strong> <span id="rawStatus">{{ updater_status }}</span></p><pre id="updateLog" class="tech-log">{{ update_log or 'No updater activity yet.' }}</pre></details>
 </div>
 <script>
 let pollTimer=null;
-function setWorking(text){
-  const icon=document.getElementById('statusIcon');
-  icon.className='update-icon working'; icon.innerHTML='<span class="spinner"></span>';
-  document.getElementById('statusLabel').textContent=text;
-}
-async function refreshStatus(manual=false){
-  if(manual) setWorking('Checking for updates…');
-  try{
-    const r=await fetch('{{ url_for('update_status_json') }}?t='+Date.now(),{cache:'no-store'});
-    if(!r.ok) throw new Error('check failed');
-    const d=await r.json();
-    document.getElementById('currentVersion').textContent='v'+d.current;
-    document.getElementById('latestVersion').textContent=d.latest?'v'+d.latest:'Not checked';
-    document.getElementById('rawStatus').textContent=d.raw_status;
-    document.getElementById('updateLog').textContent=d.log||'No updater activity yet.';
-    document.getElementById('checkedAt').textContent=new Date().toLocaleTimeString();
-    const icon=document.getElementById('statusIcon'), label=document.getElementById('statusLabel'), help=document.getElementById('statusHelp'), install=document.getElementById('installButton');
-    if(['running','queued','starting'].includes(d.raw_status)){
-      icon.className='update-icon working'; icon.innerHTML='<span class="spinner"></span>'; label.textContent=d.status_label; help.textContent='Please leave this page open. It will refresh automatically.'; install.disabled=true; install.textContent='Installing…';
-    }else if(d.raw_status.startsWith('failed')){
-      icon.className='update-icon bad'; icon.textContent='!'; label.textContent='Update needs attention'; help.textContent='The app is still safe to use. Open Technical details if support asks for the error.'; install.disabled=!d.update_available; install.textContent=d.update_available?'Try Update Again':'No Update Needed';
-    }else if(d.update_available){
-      icon.className='update-icon good'; icon.textContent='↓'; label.textContent='Update available'; help.textContent='A newer version is ready to install.'; install.disabled=false; install.textContent='Install Update';
-    }else if(d.latest){
-      icon.className='update-icon good'; icon.textContent='✓'; label.textContent="You're up to date"; help.textContent='No action is needed.'; install.disabled=true; install.textContent='No Update Needed';
-    }else{
-      icon.className='update-icon bad'; icon.textContent='!'; label.textContent='Unable to check right now'; help.textContent='The stock system will still work normally. Try checking again.'; install.disabled=true; install.textContent='No Update Needed';
-    }
-  }catch(e){
-    document.getElementById('statusIcon').className='update-icon bad'; document.getElementById('statusIcon').textContent='!'; document.getElementById('statusLabel').textContent='Unable to check right now';
-  }
-}
+function setWorking(text){const icon=document.getElementById('statusIcon');icon.className='update-icon working';icon.innerHTML='<span class="spinner"></span>';document.getElementById('statusLabel').textContent=text}
+async function refreshStatus(manual=false){if(manual)setWorking('Checking for updates…');try{const r=await fetch('{{ url_for('update_status_json') }}?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('check failed');const d=await r.json();document.getElementById('currentVersion').textContent='v'+d.current;document.getElementById('latestVersion').textContent=d.latest?'v'+d.latest:'Not checked';document.getElementById('rawStatus').textContent=d.raw_status;document.getElementById('updateLog').textContent=d.log||'No updater activity yet.';document.getElementById('checkedAt').textContent=new Date().toLocaleTimeString();const icon=document.getElementById('statusIcon'),label=document.getElementById('statusLabel'),help=document.getElementById('statusHelp'),install=document.getElementById('installButton');if(['running','queued','starting'].includes(d.raw_status)){icon.className='update-icon working';icon.innerHTML='<span class="spinner"></span>';label.textContent=d.status_label;help.textContent='Please leave this page open. It will refresh automatically.';install.disabled=true;install.textContent='Installing…'}else if(d.raw_status.startsWith('failed')){icon.className='update-icon bad';icon.textContent='!';label.textContent='Update needs attention';help.textContent='The app is still safe to use. Open Technical details if support asks for the error.';install.disabled=!d.update_available;install.textContent=d.update_available?'Try Update Again':'No Update Needed'}else if(d.update_available){icon.className='update-icon good';icon.textContent='↓';label.textContent='Update available';help.textContent='A newer version is ready to install.';install.disabled=false;install.textContent='Install Update'}else if(d.latest){icon.className='update-icon good';icon.textContent='✓';label.textContent="You're up to date";help.textContent='No action is needed.';install.disabled=true;install.textContent='No Update Needed'}else{icon.className='update-icon bad';icon.textContent='!';label.textContent='Unable to check right now';help.textContent='The stock system will still work normally. Try checking again.';install.disabled=true;install.textContent='No Update Needed'}}catch(e){document.getElementById('statusIcon').className='update-icon bad';document.getElementById('statusIcon').textContent='!';document.getElementById('statusLabel').textContent='Unable to check right now'}}
 function checkAgain(){refreshStatus(true)}
-document.getElementById('installForm').addEventListener('submit',()=>{setWorking('Starting update…');document.getElementById('installButton').disabled=true;document.getElementById('installButton').textContent='Starting…'});
-pollTimer=setInterval(()=>refreshStatus(false),3000);
+document.getElementById('installForm').addEventListener('submit',()=>{setWorking('Starting update…');document.getElementById('installButton').disabled=true;document.getElementById('installButton').textContent='Starting…'});pollTimer=setInterval(()=>refreshStatus(false),3000);
 </script>
 {% endblock %}
