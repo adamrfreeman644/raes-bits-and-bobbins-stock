@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   check:
@@ -20,7 +21,20 @@ jobs:
       - name: Check Python syntax
         run: python -m compileall -q app tests
       - name: Subject identity test
-        run: pytest -q tests/test_shared_auth.py::test_oidc_subject_becomes_permanent_identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          pytest -q tests/test_shared_auth.py::test_oidc_subject_becomes_permanent_identity > /tmp/auth-test.log 2>&1
+          code=$?
+          if [ "$code" -ne 0 ]; then
+            printf 'Temporary CI diagnostic for subject identity test:\n\n```text\n' >/tmp/comment.txt
+            cat /tmp/auth-test.log >>/tmp/comment.txt
+            printf '\n```\n' >>/tmp/comment.txt
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.txt
+          fi
+          cat /tmp/auth-test.log
+          exit "$code"
       - name: Tenant isolation test
         run: pytest -q tests/test_shared_auth.py::test_auto_provisioned_accounts_have_isolated_storage
       - name: No local OIDC password test
