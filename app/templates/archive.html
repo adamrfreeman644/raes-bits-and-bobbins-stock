@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Archive{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Archive</h1><p class="muted">Retired products stay here with their photos, barcodes and history intact.</p></div></div>
+{% if products %}<div class="cards">{% for p in products %}<div class="card"><div class="card-photo">{% if p.main_photo %}<img src="{{ url_for('photo_file', filename=p.main_photo) }}">{% else %}<span>No photo</span>{% endif %}</div><div class="card-body"><h3>{{ p.item }}</h3><div class="muted">Archived {{ p.archived_at[:10] }}</div><div class="price">{{ p.price_pence|money }}</div><div class="archive-actions"><a class="btn" href="{{ url_for('product_detail', product_id=p.id) }}">View</a><form method="post" action="{{ url_for('restore_archive', product_id=p.id) }}"><button class="btn primary" type="submit">Restore</button></form></div></div></div>{% endfor %}</div>{% else %}<div class="empty"><h2>Nothing archived</h2><p>Archived products will appear here.</p></div>{% endif %}
+{% endblock %}
