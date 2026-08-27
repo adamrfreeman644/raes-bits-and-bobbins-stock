@@ -1,6 +1,3 @@
-import importlib
-import sqlite3
-
 import pytest
 
 
@@ -19,13 +16,21 @@ def tenant_module(tmp_path, monkeypatch):
 
 def test_oidc_subject_becomes_permanent_identity(tenant_module):
     tenant = tenant_module
-    legacy_id = tenant.create_account("owner@example.test", "rollback-only-password", "Existing Business")
+    with tenant.platform_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO accounts(email,password_hash,business_name,created_at) VALUES(?,?,?,?)",
+            ("owner@example.test", "legacy-password-hash-preserved-for-rollback", "Existing Business", "2026-01-01T00:00:00"),
+        )
+        legacy_id = cur.lastrowid
+
     linked = tenant.link_oidc_identity("authentik-sub-123", "owner@example.test", "Owner", auto_provision=False)
+    assert linked is not None
     assert linked["id"] == legacy_id
     assert linked["auth_subject"] == "authentik-sub-123"
 
-    # Email may change in the identity provider; `sub`, not email, resolves tenant.
+    # Email can change; permanent tenant resolution remains the immutable OIDC sub.
     again = tenant.link_oidc_identity("authentik-sub-123", "new@example.test", "Owner New", auto_provision=False)
+    assert again is not None
     assert again["id"] == legacy_id
     assert again["email"] == "new@example.test"
 
