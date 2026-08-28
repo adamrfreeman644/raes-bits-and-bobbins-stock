@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.6 — Barcode removal and complete table barcode listing
+
+- Fix Remove Barcode so migrated legacy barcode values cannot recreate a deleted barcode on the next request.
+- Clear stale legacy barcode/inventory references when an existing barcode is edited.
+- Keep product available quantity and status synchronised after barcode removal.
+- Change the inventory table from a single Example barcode column to a Barcodes column listing every physical-item barcode assigned to the product.
+- Keep exact barcode search and existing card/table navigation behaviour.
+
 ## 0.3.5 — Dashboard recent products and cleaner navigation
 
 - Move Photo Shoot from the primary hamburger list into the expandable More section.
