@@ -8,6 +8,7 @@ LATEST="$STATE/latest_version"
 LASTCHECK="$STATE/last_check"
 LOG="$STATE/update.log"
 STATUS="$STATE/status"
+DESIRED_ORIGIN="${STOCK_TAKE_REPO_URL:-https://github.com/adamrfreeman644/stock-take.git}"
 mkdir -p "$STATE" "$PROJECT/backups"
 touch "$LOG"
 echo "starting" > "$STATUS"
@@ -35,10 +36,6 @@ if [ ! -d "$PROJECT/.git" ]; then
   exit 1
 fi
 
-# Docker Compose is being executed inside the updater container, but bind mount
-# source paths are interpreted by the host Docker daemon. Discover the real
-# host path backing /project so recreated app containers always mount the
-# persistent Unraid data rather than accidental host /project/* directories.
 HOST_PROJECT_DIR=$(docker inspect inventory-updater --format '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)
 if [ -z "$HOST_PROJECT_DIR" ]; then
   log "ERROR: could not determine host project directory"
@@ -51,9 +48,28 @@ log "Host project directory: $HOST_PROJECT_DIR"
 git config --global --add safe.directory "$PROJECT" >/dev/null 2>&1 || true
 log "Dependencies OK: $(git --version); $(docker --version); $(docker compose version)"
 
+migrate_origin_if_available(){
+  cd "$PROJECT" || return 1
+  CURRENT_ORIGIN=$(git remote get-url origin 2>/dev/null || true)
+  if [ "$CURRENT_ORIGIN" = "$DESIRED_ORIGIN" ]; then
+    return 0
+  fi
+
+  # Before the GitHub rename, stock-take does not exist yet. Keep the current
+  # origin so this release can still be installed normally. As soon as the new
+  # repository name becomes reachable, switch origin automatically.
+  if git ls-remote "$DESIRED_ORIGIN" HEAD >/dev/null 2>>"$LOG"; then
+    git remote set-url origin "$DESIRED_ORIGIN"
+    log "Git origin migrated to $DESIRED_ORIGIN"
+  else
+    log "stock-take repository not reachable yet; keeping existing origin"
+  fi
+}
+
 check_latest(){
   echo "checking" > "$STATUS"
   cd "$PROJECT" || return 1
+  migrate_origin_if_available || true
   if git fetch origin main >>"$LOG" 2>&1; then
     VERSION=$(git show origin/main:VERSION 2>>"$LOG" | tr -d '\r\n')
     if [ -n "$VERSION" ]; then
@@ -128,6 +144,7 @@ while true; do
     }
 
     git config --global --add safe.directory "$PROJECT" >/dev/null 2>&1 || true
+    migrate_origin_if_available || true
     if git fetch origin main >>"$LOG" 2>&1 && git reset --hard origin/main >>"$LOG" 2>&1; then
       log "GitHub files updated to $(git rev-parse --short HEAD)"
       if [ -f "$PROJECT/VERSION" ]; then
