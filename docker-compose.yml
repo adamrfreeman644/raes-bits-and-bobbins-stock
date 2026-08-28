@@ -19,10 +19,10 @@ services:
       - OIDC_AUTO_PROVISION=${OIDC_AUTO_PROVISION:-true}
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
     volumes:
-      - ./data:/data
-      - ./photos:/photos
-      - ./backups:/backups
-      - ./updater-state:/updater
+      - ${HOST_PROJECT_DIR:-.}/data:/data
+      - ${HOST_PROJECT_DIR:-.}/photos:/photos
+      - ${HOST_PROJECT_DIR:-.}/backups:/backups
+      - ${HOST_PROJECT_DIR:-.}/updater-state:/updater
     restart: unless-stopped
 
   inventory-updater:

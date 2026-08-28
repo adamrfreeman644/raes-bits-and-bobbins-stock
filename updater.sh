@@ -35,6 +35,19 @@ if [ ! -d "$PROJECT/.git" ]; then
   exit 1
 fi
 
+# Docker Compose is being executed inside the updater container, but bind mount
+# source paths are interpreted by the host Docker daemon. Discover the real
+# host path backing /project so recreated app containers always mount the
+# persistent Unraid data rather than accidental host /project/* directories.
+HOST_PROJECT_DIR=$(docker inspect inventory-updater --format '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)
+if [ -z "$HOST_PROJECT_DIR" ]; then
+  log "ERROR: could not determine host project directory"
+  echo "failed: host project path" > "$STATUS"
+  exit 1
+fi
+export HOST_PROJECT_DIR
+log "Host project directory: $HOST_PROJECT_DIR"
+
 git config --global --add safe.directory "$PROJECT" >/dev/null 2>&1 || true
 log "Dependencies OK: $(git --version); $(docker --version); $(docker compose version)"
 
@@ -157,7 +170,7 @@ while true; do
     fi
 
     if docker compose -f "$PROJECT/docker-compose.yml" up -d --no-deps inventory-manager >>"$LOG" 2>&1; then
-      log "Inventory Manager replacement container started"
+      log "Inventory Manager replacement container started with persistent host bind paths"
       echo "complete" > "$STATUS"
     else
       log "ERROR: Inventory Manager replacement container failed to start"
