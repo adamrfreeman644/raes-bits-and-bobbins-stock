@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2 — Reliable update checks and compact menu
+
+- Move GitHub version checking into the updater container instead of the web container.
+- Store the latest detected version in shared updater state for the webpage to read locally.
+- Make Check Again explicitly ask the updater service to fetch `origin/main`.
+- Keep update installation backup-first and preserve all tenant data.
+- Reduce the hamburger button and menu width, spacing and mobile row height.
+- Hide menu descriptions on small screens so navigation stays compact.
+
 ## 0.3.1 — Per-account inventory fields
 
 - Add account-specific optional inventory fields without changing the existing core field set.
