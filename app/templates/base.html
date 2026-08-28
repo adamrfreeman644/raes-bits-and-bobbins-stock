@@ -23,15 +23,20 @@
       <a href="{{ url_for('new_product') }}"><strong>Add Product</strong><span>Create a stock record</span></a>
       <a href="/photo-shoot/"><strong>Photo Shoot</strong><span>Fast scan + batch photos</span></a>
       <a href="{{ url_for('events') }}"><strong>Events / Pop-up Shops</strong><span>Plan and start selling events</span></a>
-      <a href="{{ url_for('sales_history') }}"><strong>Sales History</strong><span>Permanent sales records</span></a>
-      <a href="{{ url_for('activity') }}"><strong>Activity Log</strong><span>See what changed</span></a>
-      <a href="{{ url_for('paypal') }}"><strong>PayPal POS</strong><span>Export / import stock</span></a>
-      <a href="{{ url_for('backups') }}"><strong>Backups</strong><span>Create, download and restore</span></a>
-      <a href="{{ url_for('archive') }}"><strong>Archive</strong><span>Retired products</span></a>
-      <a href="{{ url_for('updates') }}"><strong>Updates</strong><span>Check and install</span></a>
-      <div class="menu-divider"></div>
-      <a href="{{ url_for('account_settings') }}"><strong>Owner Account</strong><span>Business name and password</span></a>
-      <form method="post" action="{{ url_for('logout') }}" class="menu-logout"><button type="submit">Sign out</button></form>
+
+      <details class="menu-more">
+        <summary><strong>More</strong><span class="menu-chevron">›</span></summary>
+        <div class="menu-more-items">
+          <a href="{{ url_for('sales_history') }}"><strong>Sales History</strong></a>
+          <a href="{{ url_for('paypal') }}"><strong>PayPal POS</strong></a>
+          <a href="{{ url_for('activity') }}"><strong>Activity Log</strong></a>
+          <a href="{{ url_for('backups') }}"><strong>Backups</strong></a>
+          <a href="{{ url_for('archive') }}"><strong>Archive</strong></a>
+          <a href="{{ url_for('updates') }}"><strong>Updates</strong></a>
+          <a href="{{ url_for('account_settings') }}"><strong>Owner Account</strong></a>
+          <form method="post" action="{{ url_for('logout') }}" class="menu-logout"><button type="submit">Sign out</button></form>
+        </div>
+      </details>
     </nav>
     {% endif %}
   </div>
@@ -43,7 +48,7 @@
   {% block content %}{% endblock %}
 </main>
 <script>
-(()=>{const b=document.getElementById('burgerButton'),m=document.getElementById('burgerMenu');if(!b||!m)return;const close=()=>{m.classList.remove('open');m.setAttribute('aria-hidden','true');b.setAttribute('aria-expanded','false')};b.addEventListener('click',e=>{e.stopPropagation();const open=!m.classList.contains('open');m.classList.toggle('open',open);m.setAttribute('aria-hidden',String(!open));b.setAttribute('aria-expanded',String(open))});document.addEventListener('click',e=>{if(!m.contains(e.target)&&e.target!==b)close()});document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});})();
+(()=>{const b=document.getElementById('burgerButton'),m=document.getElementById('burgerMenu');if(!b||!m)return;const close=()=>{m.classList.remove('open');m.setAttribute('aria-hidden','true');b.setAttribute('aria-expanded','false');m.querySelectorAll('details[open]').forEach(d=>d.removeAttribute('open'))};b.addEventListener('click',e=>{e.stopPropagation();const open=!m.classList.contains('open');m.classList.toggle('open',open);m.setAttribute('aria-hidden',String(!open));b.setAttribute('aria-expanded',String(open))});document.addEventListener('click',e=>{if(!m.contains(e.target)&&e.target!==b)close()});document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});})();
 </script>
 {% block scripts %}{% endblock %}
 </body>
