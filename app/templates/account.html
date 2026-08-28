@@ -14,6 +14,12 @@
       </form>
     </section>
     <section class="panel account-panel">
+      <h2>Inventory fields</h2>
+      <p>Choose extra product fields for this account, such as board compatibility or cost, or create your own fields.</p>
+      <div class="account-actions"><a class="btn primary" href="{{ url_for('account_fields') }}">Manage Inventory Fields</a></div>
+      <p class="muted">Field choices and values are isolated to this account. The existing core stock fields stay unchanged.</p>
+    </section>
+    <section class="panel account-panel">
       <h2>Authentication</h2>
       <p><strong>Provider:</strong> {{ auth_status.provider }}</p>
       <p><strong>Status:</strong> {{ 'Connected' if auth_status.connected else 'Configuration error' }}</p>
