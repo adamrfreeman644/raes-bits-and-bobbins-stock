@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 — Per-account inventory fields
+
+- Add account-specific optional inventory fields without changing the existing core field set.
+- Add built-in optional fields for Board compatibility, Cost, Supplier, Manufacturer, Model / part number, Storage location, Condition and Reorder level.
+- Keep all optional fields disabled by default so existing accounts retain their current layout.
+- Add custom field creation with Text, Number, Money (£), Yes / No and Dropdown field types.
+- Show enabled fields on Add Product, Edit Product, Duplicate Product and Product Detail views.
+- Store field definitions and values inside each tenant's isolated inventory database.
+- Allow custom fields to be deleted and built-in optional fields to be disabled without modifying the core product schema.
+
 ## 0.3.0 — Shared authentication architecture
 
 - Add Authentik OpenID Connect authentication using Authorization Code flow with PKCE support.
