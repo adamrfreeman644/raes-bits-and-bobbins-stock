@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.5 — Dashboard recent products and cleaner navigation
+
+- Move Photo Shoot from the primary hamburger list into the expandable More section.
+- Keep the primary menu focused on Dashboard, Inventory, Add Product and Events / Pop-up Shops.
+- Add a Recently Added Products section to the dashboard.
+- Show the six newest non-archived products with photo, name, useful detail and price.
+- Link each recent product directly to its product details page.
+- Keep recent product queries inside the active tenant database so accounts remain isolated.
+
 ## 0.3.4 — Shorter navigation
 
 - Keep the hamburger menu focused on day-to-day actions: Dashboard, Inventory, Add Product, Photo Shoot and Events / Pop-up Shops.
