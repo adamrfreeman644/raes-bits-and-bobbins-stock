@@ -1,11 +1,6 @@
-import json
-import time
-import urllib.request
 from datetime import datetime
 
-from flask import flash, jsonify, redirect, render_template, url_for
-
-LATEST_URL = 'https://raw.githubusercontent.com/adamrfreeman644/raes-bits-and-bobbins-stock/main/VERSION'
+from flask import flash, jsonify, redirect, render_template, request, url_for
 
 
 def version_tuple(value):
@@ -13,20 +8,6 @@ def version_tuple(value):
         return tuple(int(x) for x in str(value).strip().lstrip('v').split('.'))
     except Exception:
         return (0,)
-
-
-def latest_version():
-    try:
-        url = f"{LATEST_URL}?nocache={time.time_ns()}"
-        req = urllib.request.Request(url, headers={
-            'User-Agent': 'raes-stock-updater',
-            'Cache-Control': 'no-cache, no-store, max-age=0',
-            'Pragma': 'no-cache',
-        })
-        with urllib.request.urlopen(req, timeout=8) as response:
-            return response.read().decode('utf-8').strip()
-    except Exception:
-        return None
 
 
 def read_text(path, default=''):
@@ -49,16 +30,26 @@ def friendly_status(raw):
         return 'Installing', 'working'
     if raw == 'queued':
         return 'Waiting to start', 'working'
+    if raw == 'checking':
+        return 'Checking for updates', 'working'
     if raw == 'complete':
         return 'Update finished', 'good'
     if raw.startswith('failed'):
         return 'Update needs attention', 'bad'
-    if raw == 'idle':
-        return 'Ready', 'good'
     return 'Ready', 'good'
 
 
 def configure(app, updater_dir, current_version):
+    def latest_version():
+        return read_text(updater_dir / 'latest_version', '') or None
+
+    def request_check():
+        try:
+            (updater_dir / 'check.request').write_text(datetime.now().isoformat(timespec='seconds'))
+            return True
+        except OSError:
+            return False
+
     def updates_view():
         latest = latest_version()
         raw_status = read_text(updater_dir / 'status', 'idle') or 'idle'
@@ -73,13 +64,14 @@ def configure(app, updater_dir, current_version):
             status_label=status_label,
             status_kind=status_kind,
             update_log=tail(updater_dir / 'update.log'),
-            checked_at=datetime.now().strftime('%H:%M:%S'),
+            checked_at=read_text(updater_dir / 'last_check', datetime.now().strftime('%H:%M:%S')),
         )
 
     def install_view():
         latest = latest_version()
         if not latest:
-            flash('I could not reach GitHub. Nothing has been changed. Try Check Again.', 'error')
+            request_check()
+            flash('The updater has not completed a GitHub check yet. Press Check Again, then try once the latest version appears.', 'info')
             return redirect(url_for('updates'))
         if version_tuple(latest) <= version_tuple(current_version):
             flash('You already have the latest version.', 'info')
@@ -93,6 +85,8 @@ def configure(app, updater_dir, current_version):
         return redirect(url_for('updates'))
 
     def status_view():
+        if request.args.get('check') == '1':
+            request_check()
         latest = latest_version()
         raw_status = read_text(updater_dir / 'status', 'idle') or 'idle'
         status_label, status_kind = friendly_status(raw_status)
@@ -104,6 +98,7 @@ def configure(app, updater_dir, current_version):
             'status_kind': status_kind,
             'update_available': bool(latest and version_tuple(latest) > version_tuple(current_version)),
             'log': tail(updater_dir / 'update.log', 24),
+            'checked_at': read_text(updater_dir / 'last_check', ''),
         })
 
     app.view_functions['updates'] = updates_view
