@@ -18,15 +18,15 @@
     {% if current_account %}
     <button class="burger" id="burgerButton" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
     <nav class="burger-menu" id="burgerMenu" aria-hidden="true">
-      <a href="{{ url_for('dashboard') }}"><strong>Dashboard</strong><span>Today, sales and current event</span></a>
+      <a href="{{ url_for('dashboard') }}"><strong>Dashboard</strong><span>Today, stock and recent products</span></a>
       <a href="{{ url_for('index') }}"><strong>Inventory</strong><span>Products, stock and barcode search</span></a>
       <a href="{{ url_for('new_product') }}"><strong>Add Product</strong><span>Create a stock record</span></a>
-      <a href="/photo-shoot/"><strong>Photo Shoot</strong><span>Fast scan + batch photos</span></a>
       <a href="{{ url_for('events') }}"><strong>Events / Pop-up Shops</strong><span>Plan and start selling events</span></a>
 
       <details class="menu-more">
         <summary><strong>More</strong><span class="menu-chevron">›</span></summary>
         <div class="menu-more-items">
+          <a href="/photo-shoot/"><strong>Photo Shoot</strong></a>
           <a href="{{ url_for('sales_history') }}"><strong>Sales History</strong></a>
           <a href="{{ url_for('paypal') }}"><strong>PayPal POS</strong></a>
           <a href="{{ url_for('activity') }}"><strong>Activity Log</strong></a>
