@@ -5,9 +5,11 @@ import os
 from app.main import app, initialise_owner_inventory, tenant, PUBLIC_ENDPOINTS
 from app import server
 from app.custom_fields import configure as configure_custom_fields
+from app.dashboard_recent import configure as configure_dashboard_recent
 
 
 configure_custom_fields(app, server)
+configure_dashboard_recent(app, server)
 
 
 def enabled(name: str) -> bool:
