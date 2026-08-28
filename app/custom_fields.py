@@ -1,5 +1,4 @@
 import re
-import sqlite3
 from datetime import datetime
 
 from flask import abort, flash, redirect, render_template, request, url_for
@@ -51,12 +50,11 @@ def configure(app, server):
     def fields(enabled_only=False):
         ensure_schema()
         sql = 'SELECT * FROM custom_field_definitions'
-        params = []
         if enabled_only:
             sql += ' WHERE enabled=1'
         sql += ' ORDER BY sort_order,id'
         with server.db() as conn:
-            return conn.execute(sql, params).fetchall()
+            return conn.execute(sql).fetchall()
 
     def values_for(product_id):
         if not product_id:
@@ -88,13 +86,8 @@ def configure(app, server):
     def custom_field_context():
         try:
             active = fields(enabled_only=True)
-            product_id = None
-            if request.view_args:
-                product_id = request.view_args.get('product_id')
-            return {
-                'custom_fields': active,
-                'custom_values': values_for(product_id),
-            }
+            product_id = request.view_args.get('product_id') if request.view_args else None
+            return {'custom_fields': active, 'custom_values': values_for(product_id)}
         except Exception:
             return {'custom_fields': [], 'custom_values': {}}
 
@@ -107,8 +100,7 @@ def configure(app, server):
             if request.endpoint == 'edit_product' and request.view_args:
                 product_id = request.view_args.get('product_id')
             elif request.endpoint == 'new_product':
-                location = response.headers.get('Location', '')
-                match = re.search(r'/product/(\d+)(?:$|[/?#])', location)
+                match = re.search(r'/product/(\d+)(?:$|[/?#])', response.headers.get('Location', ''))
                 if match:
                     product_id = int(match.group(1))
             if product_id:
@@ -119,7 +111,7 @@ def configure(app, server):
 
     @app.get('/account/fields')
     def account_fields():
-        return render_template('fields.html', fields=fields(enabled_only=False), allowed_types=sorted(ALLOWED_TYPES))
+        return render_template('fields.html', fields=fields(enabled_only=False))
 
     @app.post('/account/fields/toggle/<int:field_id>')
     def toggle_account_field(field_id):
@@ -170,7 +162,7 @@ def configure(app, server):
     def delete_account_field(field_id):
         ensure_schema()
         with server.db() as conn:
-            row = conn.execute('SELECT label,is_preset FROM custom_field_definitions WHERE id=?', (field_id,)).fetchone()
+            row = conn.execute('SELECT is_preset FROM custom_field_definitions WHERE id=?', (field_id,)).fetchone()
             if not row:
                 abort(404)
             if row['is_preset']:
@@ -179,5 +171,3 @@ def configure(app, server):
             conn.execute('DELETE FROM custom_field_definitions WHERE id=?', (field_id,))
         flash('Custom field deleted.', 'success')
         return redirect(url_for('account_fields'))
-
-    ensure_schema()
