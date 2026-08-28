@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 — Preserve persistent data mounts during updates
+
+- Fix updater-triggered container recreation using the wrong host bind paths.
+- Discover the real host path backing `/project` from Docker before recreating Inventory Manager.
+- Pass that host path into Compose for data, photos, backups and updater-state mounts.
+- Prevent updates from accidentally mounting host `/project/*` directories instead of the Unraid appdata directories.
+- Preserve existing owner accounts and tenant inventory databases across updater rebuilds.
+
 ## 0.3.2 — Reliable update checks and compact menu
 
 - Move GitHub version checking into the updater container instead of the web container.
