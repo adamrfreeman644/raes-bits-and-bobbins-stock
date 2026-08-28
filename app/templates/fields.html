@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}Inventory Fields · {{ business_name }}{% endblock %}
+{% block content %}
+<div class="page-head"><a class="btn" href="{{ url_for('account_settings') }}">← Account</a><h1>Inventory fields</h1></div>
+<section class="panel account-panel">
+  <h2>Optional fields for this account</h2>
+  <p>Switch on only the fields this inventory needs. These settings apply only to this account.</p>
+  <div class="barcode-list">
+    {% for field in fields %}
+    <div class="barcode-row">
+      <div><strong>{{ field.label }}</strong><div class="muted">{{ field.field_type|replace('_',' ')|title }}{% if field.is_preset %} · built in{% else %} · custom{% endif %}</div></div>
+      <div class="barcode-row-actions">
+        <span class="status {{ 'available' if field.enabled else 'sold' }}">{{ 'On' if field.enabled else 'Off' }}</span>
+        <form method="post" action="{{ url_for('toggle_account_field', field_id=field.id) }}"><button class="btn" type="submit">{{ 'Turn off' if field.enabled else 'Turn on' }}</button></form>
+        {% if not field.is_preset %}<form method="post" action="{{ url_for('delete_account_field', field_id=field.id) }}" onsubmit="return confirm('Delete this custom field and its saved values?')"><button class="btn danger" type="submit">Delete</button></form>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+<section class="panel account-panel">
+  <h2>Add a custom field</h2>
+  <p>Create any extra field this account needs. New custom fields are enabled immediately.</p>
+  <form method="post" action="{{ url_for('add_account_field') }}" class="product-form">
+    <div class="two-col">
+      <label>Field name<input name="label" required placeholder="e.g. Socket type"></label>
+      <label>Field type<select name="field_type" id="customFieldType"><option value="text">Text</option><option value="number">Number</option><option value="money">Money (£)</option><option value="boolean">Yes / No</option><option value="select">Dropdown</option></select></label>
+    </div>
+    <label id="customFieldOptions" style="display:none">Dropdown options<input name="options" placeholder="Option 1, Option 2, Option 3"><small>Separate options with commas.</small></label>
+    <button class="btn primary" type="submit">Add Field</button>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+const type=document.getElementById('customFieldType');const options=document.getElementById('customFieldOptions');
+function syncOptions(){options.style.display=type.value==='select'?'block':'none';}type.addEventListener('change',syncOptions);syncOptions();
+</script>
+{% endblock %}
