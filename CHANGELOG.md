@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4 — Shorter navigation
+
+- Keep the hamburger menu focused on day-to-day actions: Dashboard, Inventory, Add Product, Photo Shoot and Events / Pop-up Shops.
+- Move less-used pages into a single expandable More section.
+- Put Sales History, PayPal POS, Activity Log, Backups, Archive, Updates, Owner Account and Sign out under More.
+- Keep the compact mobile styling and collapse More whenever the menu closes.
+
 ## 0.3.3 — Preserve persistent data mounts during updates
 
 - Fix updater-triggered container recreation using the wrong host bind paths.
