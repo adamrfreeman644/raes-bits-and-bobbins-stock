@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.7 — Rename-safe updater migration
+
+- Prepare the updater for the repository rename from `raes-bits-and-bobbins-stock` to `stock-take`.
+- Keep using the current Git origin while the new repository name does not yet exist.
+- Automatically switch Git origin to `https://github.com/adamrfreeman644/stock-take.git` as soon as the renamed repository becomes reachable.
+- Run the origin migration before both update checks and update installs.
+- Preserve all existing backup-first and persistent-volume safety behaviour.
+
 ## 0.3.6 — Barcode removal and complete table barcode listing
 
 - Fix Remove Barcode so migrated legacy barcode values cannot recreate a deleted barcode on the next request.
