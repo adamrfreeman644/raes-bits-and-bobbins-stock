@@ -3,6 +3,9 @@ set -u
 STATE=/updater
 PROJECT=/project
 REQ="$STATE/update.request"
+CHECKREQ="$STATE/check.request"
+LATEST="$STATE/latest_version"
+LASTCHECK="$STATE/last_check"
 LOG="$STATE/update.log"
 STATUS="$STATE/status"
 mkdir -p "$STATE" "$PROJECT/backups"
@@ -34,8 +37,24 @@ fi
 
 git config --global --add safe.directory "$PROJECT" >/dev/null 2>&1 || true
 log "Dependencies OK: $(git --version); $(docker --version); $(docker compose version)"
-echo "idle" > "$STATUS"
-log "Updater service ready"
+
+check_latest(){
+  echo "checking" > "$STATUS"
+  cd "$PROJECT" || return 1
+  if git fetch origin main >>"$LOG" 2>&1; then
+    VERSION=$(git show origin/main:VERSION 2>>"$LOG" | tr -d '\r\n')
+    if [ -n "$VERSION" ]; then
+      printf '%s\n' "$VERSION" > "$LATEST"
+      date '+%H:%M:%S' > "$LASTCHECK"
+      log "Latest GitHub version is $VERSION"
+      echo "idle" > "$STATUS"
+      return 0
+    fi
+  fi
+  log "ERROR: could not determine latest version from GitHub"
+  echo "failed: version check" > "$STATUS"
+  return 1
+}
 
 backup_databases(){
   TS="$1"
@@ -64,7 +83,15 @@ backup_databases(){
   return 0
 }
 
+check_latest || true
+log "Updater service ready"
+
 while true; do
+  if [ -f "$CHECKREQ" ]; then
+    rm -f "$CHECKREQ"
+    check_latest || true
+  fi
+
   if [ -f "$REQ" ]; then
     rm -f "$REQ"
     echo "running" > "$STATUS"
@@ -90,6 +117,11 @@ while true; do
     git config --global --add safe.directory "$PROJECT" >/dev/null 2>&1 || true
     if git fetch origin main >>"$LOG" 2>&1 && git reset --hard origin/main >>"$LOG" 2>&1; then
       log "GitHub files updated to $(git rev-parse --short HEAD)"
+      if [ -f "$PROJECT/VERSION" ]; then
+        tr -d '\r\n' < "$PROJECT/VERSION" > "$LATEST"
+        printf '\n' >> "$LATEST"
+        date '+%H:%M:%S' > "$LASTCHECK"
+      fi
     else
       log "ERROR: git update failed"
       echo "failed: git update" > "$STATUS"
@@ -132,5 +164,5 @@ while true; do
       echo "failed: start replacement" > "$STATUS"
     fi
   fi
-  sleep 5
+  sleep 3
 done
