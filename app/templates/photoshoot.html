@@ -45,7 +45,7 @@
   <section class="shoot-results">
     <h2>Batch import result</h2>
     <div class="summary-cards"><div><strong>{{ results.assigned|length }}</strong><span>assigned</span></div><div><strong>{{ results.unmatched|length }}</strong><span>need review</span></div></div>
-    {% if results.assigned %}<h3>Assigned photos</h3><div class="result-list">{% for r in results.assigned %}<div class="result-row"><span>{{ r.name }}</span><strong>{{ r.inventory_id }} · {{ r.item }}</strong><time>{{ r.taken.strftime('%H:%M:%S') }}</time></div>{% endfor %}</div>{% endif %}
+    {% if results.assigned %}<h3>Assigned photos</h3><div class="result-list">{% for r in results.assigned %}<div class="result-row"><span>{{ r.name }}</span><strong>{{ r.inventory_id }} · {{ r.item }}</strong><time>{{ r.taken.strftime('%H:%M:%S') }} · {{ r.timestamp_source }}</time></div>{% endfor %}</div>{% endif %}
     {% if results.unmatched %}<h3>Could not assign</h3><div class="result-list">{% for r in results.unmatched %}<div class="result-row warning"><span>{{ r.name }}</span><strong>{{ r.reason }}</strong></div>{% endfor %}</div>{% endif %}
   </section>
   {% endif %}
@@ -58,8 +58,11 @@
       <div><strong>Shoot #{{ s.id }}</strong><span>{{ s.started_at[:19].replace('T',' ') }}</span></div>
       <span class="status {{ 'available' if s.status == 'Active' else 'sold' }}">{{ s.status }}</span>
       {% if s.status != 'Active' %}
-      <form method="post" action="{{ url_for('photoshoot.upload_batch', session_id=s.id) }}" enctype="multipart/form-data" class="batch-upload">
-        <label class="btn">Choose photo batch<input type="file" name="photos" accept="image/*" multiple required></label>
+      <form method="post" action="{{ url_for('photoshoot.upload_batch', session_id=s.id) }}" enctype="multipart/form-data" class="batch-upload" data-batch-form>
+        <label class="btn">Choose photo batch<input type="file" name="photos" accept="image/*,.heic,.heif" multiple required data-photo-input></label>
+        <input type="hidden" name="photo_times" value="[]" data-photo-times>
+        <input type="hidden" name="device_tz_offset" value="0" data-device-offset>
+        <div class="muted" data-photo-summary>No photos selected</div>
         <button class="btn primary" type="submit">Auto Assign</button>
       </form>
       {% endif %}
@@ -71,4 +74,26 @@
 {% endblock %}
 {% block scripts %}
 {% if session %}<script>window.addEventListener('load',()=>{const e=document.getElementById('shoot-barcode');if(e){e.focus();e.select();}});</script>{% endif %}
+<script>
+document.querySelectorAll('[data-batch-form]').forEach(form=>{
+  const input=form.querySelector('[data-photo-input]');
+  const times=form.querySelector('[data-photo-times]');
+  const offset=form.querySelector('[data-device-offset]');
+  const summary=form.querySelector('[data-photo-summary]');
+  offset.value=String(new Date().getTimezoneOffset());
+  input.addEventListener('change',()=>{
+    const files=[...(input.files||[])];
+    times.value=JSON.stringify(files.map(f=>f.lastModified||0));
+    if(!files.length){summary.textContent='No photos selected';return;}
+    const preview=files.slice(0,3).map(f=>f.name).join(', ');
+    summary.textContent=`${files.length} photo${files.length===1?'':'s'} selected${preview?': '+preview:''}${files.length>3?' …':''}`;
+  });
+  form.addEventListener('submit',()=>{
+    const files=[...(input.files||[])];
+    times.value=JSON.stringify(files.map(f=>f.lastModified||0));
+    offset.value=String(new Date().getTimezoneOffset());
+    if(files.length) summary.textContent=`Uploading and assigning ${files.length} photo${files.length===1?'':'s'}…`;
+  });
+});
+</script>
 {% endblock %}
