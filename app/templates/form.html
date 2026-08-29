@@ -3,70 +3,56 @@
 {% block content %}
 <div class="page-head"><a class="btn" href="{{ url_for('product_detail', product_id=product.id) if product and not duplicate_mode else url_for('index') }}">← Back</a><h1>{{ 'Duplicate Product' if duplicate_mode else ('Edit Product' if product else 'Add Product') }}</h1></div>
 <form class="product-form" method="post" enctype="multipart/form-data" action="{{ url_for('new_product') if duplicate_mode else request.path }}">
-{% if not product or duplicate_mode %}
-<label>First item barcode *<input id="barcode" name="barcode" required autocomplete="off" placeholder="Scan the barcode already stuck to this item"></label>
-<div class="flash info">This creates the product and assigns its first physical item barcode. Add more item barcodes from the product page afterwards.</div>
-{% else %}
-<div class="flash info">Physical item barcodes are managed from the product page. Product quantity is calculated from the number of item barcodes still Available.</div>
-{% endif %}
-<label>Item *<input id="item" name="item" required value="{{ product.item if product else '' }}" placeholder="Cushion, pencil case, blanket…"></label>
+{% if product and not duplicate_mode %}<div class="flash info">Physical item barcodes are managed from the product page. Product quantity is calculated from the number of item barcodes still Available.</div>{% endif %}
 
-{% if field_visibility.get('main_colour', True) or field_visibility.get('secondary_colour', True) %}
-<div class="two-col">
-  {% if field_visibility.get('main_colour', True) %}<label>Main colour<input name="main_colour" value="{{ product.main_colour if product else '' }}" placeholder="Blue"></label>{% elif product %}<input type="hidden" name="main_colour" value="{{ product.main_colour }}">{% endif %}
-  {% if field_visibility.get('secondary_colour', True) %}<label>Secondary colour<input name="secondary_colour" value="{{ product.secondary_colour if product else '' }}" placeholder="Cream"></label>{% elif product %}<input type="hidden" name="secondary_colour" value="{{ product.secondary_colour }}">{% endif %}
-</div>
-{% else %}
-  {% if product %}<input type="hidden" name="main_colour" value="{{ product.main_colour }}"><input type="hidden" name="secondary_colour" value="{{ product.secondary_colour }}">{% endif %}
-{% endif %}
-
-{% if field_visibility.get('pattern', True) %}<label>Pattern<input name="pattern" value="{{ product.pattern if product else '' }}" placeholder="Floral, striped, plain…"></label>{% elif product %}<input type="hidden" name="pattern" value="{{ product.pattern }}">{% endif %}
-{% if field_visibility.get('price', True) %}<label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label>{% elif product %}<input type="hidden" name="price" value="{{ '%.2f'|format(product.price_pence / 100) }}">{% endif %}
-
-{% if custom_fields %}
-<h2>Extra details <small>configured for this account</small></h2>
-{% for field in custom_fields %}
-  {% set saved = custom_values.get(field.id, '') %}
-  {% if field.field_type == 'boolean' %}
-    <label class="form-check"><input type="checkbox" name="custom_{{ field.id }}" value="1" {{ 'checked' if saved == '1' }}> {{ field.label }}</label>
-  {% elif field.field_type == 'select' %}
-    <label>{{ field.label }}<select name="custom_{{ field.id }}"><option value="">—</option>{% for option in field.options.split('\n') if option %}<option value="{{ option }}" {{ 'selected' if saved == option }}>{{ option }}</option>{% endfor %}</select></label>
-  {% elif field.field_type == 'number' %}
-    <label>{{ field.label }}<input type="number" step="any" name="custom_{{ field.id }}" value="{{ saved }}"></label>
-  {% elif field.field_type == 'money' %}
-    <label>{{ field.label }} (£)<input inputmode="decimal" name="custom_{{ field.id }}" value="{{ saved }}" placeholder="0.00"></label>
+{% for field in product_fields %}
+  {% if field.kind == 'core' %}
+    {% if field.field_key == 'barcode' %}
+      {% if not product or duplicate_mode %}<label>First item barcode *<input id="barcode" name="barcode" required autocomplete="off" placeholder="Scan the barcode already stuck to this item"></label><div class="flash info">This creates the product and assigns its first physical item barcode. Add more item barcodes from the product page afterwards.</div>{% endif %}
+    {% elif field.field_key == 'item' %}
+      <label>Item *<input id="item" name="item" required value="{{ product.item if product else '' }}" placeholder="Cushion, pencil case, blanket…"></label>
+    {% elif field.field_key == 'main_colour' %}
+      <label>Main colour<input name="main_colour" value="{{ product.main_colour if product else '' }}" placeholder="Blue"></label>
+    {% elif field.field_key == 'secondary_colour' %}
+      <label>Secondary colour<input name="secondary_colour" value="{{ product.secondary_colour if product else '' }}" placeholder="Cream"></label>
+    {% elif field.field_key == 'pattern' %}
+      <label>Pattern<input name="pattern" value="{{ product.pattern if product else '' }}" placeholder="Floral, striped, plain…"></label>
+    {% elif field.field_key == 'price' %}
+      <label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label>
+    {% elif field.field_key == 'notes' %}
+      <label>Notes<textarea name="notes" rows="3" placeholder="Optional internal notes">{{ product.notes if product else '' }}</textarea></label>
+    {% elif field.field_key == 'photos' %}
+      <div><h2>Photos <small>up to 5 primary photos</small></h2><div class="photo-slots">{% for i in range(1,6) %}{% set existing = photos[i-1] if photos and photos|length >= i else None %}<div class="photo-slot {{ 'filled' if existing }}" data-slot="{{ i }}">{% if existing and not duplicate_mode %}<div class="photo-slot-preview"><img src="{{ url_for('photo_file', filename=existing.filename) }}" alt="Photo {{ i }}"></div><button class="danger-mini" formmethod="post" formaction="{{ url_for('delete_photo', photo_id=existing.id) }}" type="submit" onclick="return confirm('Delete this photo?')">Remove</button>{% else %}<label class="photo-picker-slot" for="photo{{ i }}"><span class="photo-slot-label">+ Photo {{ i }}</span><img class="photo-slot-new-preview" alt="Selected photo {{ i }}"></label><input class="photo-file-input" id="photo{{ i }}" type="file" name="photo{{ i }}" accept="image/*" capture="environment" data-preview-slot="{{ i }}">{% endif %}</div>{% endfor %}</div></div>
+    {% endif %}
   {% else %}
-    <label>{{ field.label }}<input name="custom_{{ field.id }}" value="{{ saved }}"></label>
+    {% set saved = custom_values.get(field.id, '') %}
+    {% if field.field_type == 'boolean' %}
+      <label class="form-check"><input type="checkbox" name="custom_{{ field.id }}" value="1" {{ 'checked' if saved == '1' }}> {{ field.label }}</label>
+    {% elif field.field_type == 'select' %}
+      <label>{{ field.label }}<select name="custom_{{ field.id }}"><option value="">—</option>{% for option in field.options.split('\n') if option %}<option value="{{ option }}" {{ 'selected' if saved == option }}>{{ option }}</option>{% endfor %}</select></label>
+    {% elif field.field_type == 'number' %}
+      <label>{{ field.label }}<input type="number" step="any" name="custom_{{ field.id }}" value="{{ saved }}"></label>
+    {% elif field.field_type == 'money' %}
+      <label>{{ field.label }} (£)<input inputmode="decimal" name="custom_{{ field.id }}" value="{{ saved }}" placeholder="0.00"></label>
+    {% else %}
+      <label>{{ field.label }}<input name="custom_{{ field.id }}" value="{{ saved }}"></label>
+    {% endif %}
   {% endif %}
 {% endfor %}
+
+{% if product %}
+  {% if not field_visibility.get('main_colour', True) %}<input type="hidden" name="main_colour" value="{{ product.main_colour or '' }}">{% endif %}
+  {% if not field_visibility.get('secondary_colour', True) %}<input type="hidden" name="secondary_colour" value="{{ product.secondary_colour or '' }}">{% endif %}
+  {% if not field_visibility.get('pattern', True) %}<input type="hidden" name="pattern" value="{{ product.pattern or '' }}">{% endif %}
+  {% if not field_visibility.get('price', True) %}<input type="hidden" name="price" value="{{ '%.2f'|format(product.price_pence / 100) }}">{% endif %}
+  {% if not field_visibility.get('notes', True) %}<input type="hidden" name="notes" value="{{ product.notes or '' }}">{% endif %}
 {% endif %}
-
-{% if field_visibility.get('notes', True) %}<label>Notes<textarea name="notes" rows="3" placeholder="Optional internal notes">{{ product.notes if product else '' }}</textarea></label>{% elif product %}<input type="hidden" name="notes" value="{{ product.notes or '' }}">{% endif %}
-
-{% if field_visibility.get('photos', True) %}
-<h2>Photos <small>up to 5 primary photos</small></h2>
-<div class="photo-slots">
-  {% for i in range(1,6) %}
-    {% set existing = photos[i-1] if photos and photos|length >= i else None %}
-    <div class="photo-slot {{ 'filled' if existing }}" data-slot="{{ i }}">
-      {% if existing and not duplicate_mode %}
-        <div class="photo-slot-preview"><img src="{{ url_for('photo_file', filename=existing.filename) }}" alt="Photo {{ i }}"></div>
-        <button class="danger-mini" formmethod="post" formaction="{{ url_for('delete_photo', photo_id=existing.id) }}" type="submit" onclick="return confirm('Delete this photo?')">Remove</button>
-      {% else %}
-        <label class="photo-picker-slot" for="photo{{ i }}"><span class="photo-slot-label">+ Photo {{ i }}</span><img class="photo-slot-new-preview" alt="Selected photo {{ i }}"></label>
-        <input class="photo-file-input" id="photo{{ i }}" type="file" name="photo{{ i }}" accept="image/*" capture="environment" data-preview-slot="{{ i }}">
-      {% endif %}
-    </div>
-  {% endfor %}
-</div>
-{% endif %}
-
 <div class="form-actions"><a class="btn" href="{{ url_for('index') }}">Cancel</a><button class="btn primary big" type="submit">{{ 'Create Duplicate' if duplicate_mode else 'Save Product' }}</button></div>
 </form>
 {% endblock %}
 {% block scripts %}
 <script>
-{% if not product or duplicate_mode %}window.addEventListener('load',()=>document.getElementById('barcode').focus());{% endif %}
+{% if not product or duplicate_mode %}window.addEventListener('load',()=>{const b=document.getElementById('barcode');if(b)b.focus()});{% endif %}
 document.querySelectorAll('.photo-file-input').forEach(input=>{input.addEventListener('change',()=>{const file=input.files&&input.files[0];if(!file)return;const slot=input.closest('.photo-slot');const img=slot.querySelector('.photo-slot-new-preview');const label=slot.querySelector('.photo-slot-label');img.src=URL.createObjectURL(file);img.style.display='block';label.style.display='none';slot.classList.add('pending');});});
 </script>
 {% endblock %}
