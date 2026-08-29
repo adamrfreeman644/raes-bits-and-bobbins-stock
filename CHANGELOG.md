@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.9 — All product fields and toggle switches
+
+- Show every Add/Edit Product field on the Inventory Fields settings page, not just recently added optional fields.
+- Add proper on/off toggle switches for standard fields, built-in extras and custom fields.
+- Allow Main colour, Secondary colour, Pattern, Price, Notes and Photos to be hidden per account.
+- Keep Barcode and Item visible as locked-on required switches because the stock and physical-item model depends on them.
+- Preserve existing values when a standard field is switched off, so hiding a field does not erase saved product data.
+- Keep all field visibility settings inside the active tenant database.
+
+## 0.3.8 — Owner Account repair and Inventory Fields navigation
+
+- Fix Owner Account rendering when Authentik is not enabled and OIDC-only status data is unavailable.
+- Add Inventory Fields directly to the More menu.
+
 ## 0.3.7 — Rename-safe updater migration
 
 - Prepare the updater for the repository rename from `raes-bits-and-bobbins-stock` to `stock-take`.

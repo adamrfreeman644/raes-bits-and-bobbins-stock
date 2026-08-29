@@ -4,6 +4,17 @@ from datetime import datetime
 from flask import abort, flash, redirect, render_template, request, url_for
 
 
+CORE_FIELDS = [
+    ('barcode', 'Barcode', 'Barcode', True),
+    ('item', 'Item', 'Text', True),
+    ('main_colour', 'Main colour', 'Text', False),
+    ('secondary_colour', 'Secondary colour', 'Text', False),
+    ('pattern', 'Pattern', 'Text', False),
+    ('price', 'Price', 'Money', False),
+    ('notes', 'Notes', 'Long text', False),
+    ('photos', 'Photos', 'Images', False),
+]
+
 PRESET_FIELDS = [
     ('board_compatibility', 'Board compatibility', 'text'),
     ('cost', 'Cost', 'money'),
@@ -40,12 +51,37 @@ def configure(app, server):
                 FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
                 FOREIGN KEY(field_id) REFERENCES custom_field_definitions(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS core_field_settings (
+                field_key TEXT PRIMARY KEY,
+                enabled INTEGER NOT NULL DEFAULT 1
+            );
             ''')
+            for key, _label, _field_type, _required in CORE_FIELDS:
+                conn.execute('INSERT OR IGNORE INTO core_field_settings(field_key,enabled) VALUES(?,1)', (key,))
             for order, (key, label, field_type) in enumerate(PRESET_FIELDS, 10):
                 conn.execute('''INSERT OR IGNORE INTO custom_field_definitions
                     (field_key,label,field_type,options,enabled,is_preset,sort_order,created_at)
                     VALUES(?,?,?,NULL,0,1,?,?)''',
                     (key, label, field_type, order, datetime.now().isoformat(timespec='seconds')))
+
+    def core_visibility():
+        ensure_schema()
+        with server.db() as conn:
+            rows = conn.execute('SELECT field_key,enabled FROM core_field_settings').fetchall()
+        state = {r['field_key']: bool(r['enabled']) for r in rows}
+        # Required stock-model fields can never be hidden.
+        for key, _label, _type, required in CORE_FIELDS:
+            if required:
+                state[key] = True
+        return state
+
+    def core_fields_for_settings():
+        state = core_visibility()
+        return [
+            {'field_key': key, 'label': label, 'field_type': field_type,
+             'required': required, 'enabled': True if required else state.get(key, True)}
+            for key, label, field_type, required in CORE_FIELDS
+        ]
 
     def fields(enabled_only=False):
         ensure_schema()
@@ -81,15 +117,20 @@ def configure(app, server):
                              (product_id, field['id'], value))
 
     app.extensions['ensure_custom_fields_schema'] = ensure_schema
+    app.extensions['core_field_visibility'] = core_visibility
 
     @app.context_processor
     def custom_field_context():
         try:
             active = fields(enabled_only=True)
             product_id = request.view_args.get('product_id') if request.view_args else None
-            return {'custom_fields': active, 'custom_values': values_for(product_id)}
+            return {
+                'custom_fields': active,
+                'custom_values': values_for(product_id),
+                'field_visibility': core_visibility(),
+            }
         except Exception:
-            return {'custom_fields': [], 'custom_values': {}}
+            return {'custom_fields': [], 'custom_values': {}, 'field_visibility': {}}
 
     @app.after_request
     def save_product_custom_fields(response):
@@ -111,7 +152,29 @@ def configure(app, server):
 
     @app.get('/account/fields')
     def account_fields():
-        return render_template('fields.html', fields=fields(enabled_only=False))
+        return render_template(
+            'fields.html',
+            core_fields=core_fields_for_settings(),
+            fields=fields(enabled_only=False),
+        )
+
+    @app.post('/account/fields/core/toggle/<field_key>')
+    def toggle_account_core_field(field_key):
+        definition = next((f for f in CORE_FIELDS if f[0] == field_key), None)
+        if not definition:
+            abort(404)
+        if definition[3]:
+            flash(f'{definition[1]} is required by the stock system and must stay on.', 'info')
+            return redirect(url_for('account_fields'))
+        ensure_schema()
+        with server.db() as conn:
+            row = conn.execute('SELECT enabled FROM core_field_settings WHERE field_key=?', (field_key,)).fetchone()
+            enabled = bool(row['enabled']) if row else True
+            conn.execute('''INSERT INTO core_field_settings(field_key,enabled) VALUES(?,?)
+                            ON CONFLICT(field_key) DO UPDATE SET enabled=excluded.enabled''',
+                         (field_key, 0 if enabled else 1))
+        flash('Field visibility updated for this account.', 'success')
+        return redirect(url_for('account_fields'))
 
     @app.post('/account/fields/toggle/<int:field_id>')
     def toggle_account_field(field_id):

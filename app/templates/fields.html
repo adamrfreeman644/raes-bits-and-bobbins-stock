@@ -1,22 +1,48 @@
 {% extends 'base.html' %}
 {% block title %}Inventory Fields · {{ business_name }}{% endblock %}
 {% block content %}
+<style>
+.field-list{display:grid;gap:8px}.field-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:12px;background:#f8f9fa;border:1px solid var(--line);border-radius:12px}.field-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.field-meta .muted{font-size:12px}.toggle-form{margin:0}.toggle-switch{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}.toggle-switch input{position:absolute;opacity:0;pointer-events:none}.toggle-track{width:46px;height:26px;border-radius:999px;background:#cfd4da;position:relative;transition:.18s}.toggle-track:after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:.18s}.toggle-switch input:checked+.toggle-track{background:#3f9b59}.toggle-switch input:checked+.toggle-track:after{transform:translateX(20px)}.toggle-switch input:disabled+.toggle-track{opacity:.65;cursor:not-allowed}.toggle-text{font-size:12px;font-weight:800;min-width:30px}.required-badge{font-size:11px;font-weight:800;padding:4px 7px;border-radius:999px;background:#eef2f7;color:#475569}.field-delete{margin-left:8px}.section-note{margin-top:-4px}@media(max-width:560px){.field-row{grid-template-columns:1fr auto;gap:10px}.field-delete{grid-column:1/-1;margin:0}.field-delete .btn{width:100%}}
+</style>
 <div class="page-head"><a class="btn" href="{{ url_for('account_settings') }}">← Account</a><h1>Inventory fields</h1></div>
 <section class="panel account-panel">
-  <h2>Optional fields for this account</h2>
-  <p>Switch on only the fields this inventory needs. These settings apply only to this account.</p>
-  <div class="barcode-list">
+  <h2>All product fields</h2>
+  <p class="section-note">Choose exactly which fields appear when adding or editing products. These settings apply only to this account.</p>
+  <div class="field-list">
+    {% for field in core_fields %}
+    <div class="field-row">
+      <div>
+        <strong>{{ field.label }}</strong>
+        <div class="field-meta"><span class="muted">{{ field.field_type }} · standard field</span>{% if field.required %}<span class="required-badge">Required</span>{% endif %}</div>
+      </div>
+      <form class="toggle-form" method="post" action="{{ url_for('toggle_account_core_field', field_key=field.field_key) }}">
+        <label class="toggle-switch" title="{{ 'Required by the stock system' if field.required else ('Turn off' if field.enabled else 'Turn on') }}">
+          <input type="checkbox" {{ 'checked' if field.enabled }} {{ 'disabled' if field.required }} onchange="this.form.submit()">
+          <span class="toggle-track"></span><span class="toggle-text">{{ 'On' if field.enabled else 'Off' }}</span>
+        </label>
+      </form>
+    </div>
+    {% endfor %}
+
     {% for field in fields %}
-    <div class="barcode-row">
-      <div><strong>{{ field.label }}</strong><div class="muted">{{ field.field_type|replace('_',' ')|title }}{% if field.is_preset %} · built in{% else %} · custom{% endif %}</div></div>
-      <div class="barcode-row-actions">
-        <span class="status {{ 'available' if field.enabled else 'sold' }}">{{ 'On' if field.enabled else 'Off' }}</span>
-        <form method="post" action="{{ url_for('toggle_account_field', field_id=field.id) }}"><button class="btn" type="submit">{{ 'Turn off' if field.enabled else 'Turn on' }}</button></form>
-        {% if not field.is_preset %}<form method="post" action="{{ url_for('delete_account_field', field_id=field.id) }}" onsubmit="return confirm('Delete this custom field and its saved values?')"><button class="btn danger" type="submit">Delete</button></form>{% endif %}
+    <div class="field-row">
+      <div>
+        <strong>{{ field.label }}</strong>
+        <div class="field-meta"><span class="muted">{{ field.field_type|replace('_',' ')|title }} · {{ 'built-in extra' if field.is_preset else 'custom field' }}</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <form class="toggle-form" method="post" action="{{ url_for('toggle_account_field', field_id=field.id) }}">
+          <label class="toggle-switch" title="{{ 'Turn off' if field.enabled else 'Turn on' }}">
+            <input type="checkbox" {{ 'checked' if field.enabled }} onchange="this.form.submit()">
+            <span class="toggle-track"></span><span class="toggle-text">{{ 'On' if field.enabled else 'Off' }}</span>
+          </label>
+        </form>
+        {% if not field.is_preset %}<form class="field-delete" method="post" action="{{ url_for('delete_account_field', field_id=field.id) }}" onsubmit="return confirm('Delete this custom field and its saved values?')"><button class="btn danger" type="submit">Delete</button></form>{% endif %}
       </div>
     </div>
     {% endfor %}
   </div>
+  <p class="muted">Barcode and Item remain on because products and physical stock records cannot work without them. Turning another field off hides it from Add Product, Edit Product and Duplicate Product without deleting existing saved data.</p>
 </section>
 <section class="panel account-panel">
   <h2>Add a custom field</h2>
