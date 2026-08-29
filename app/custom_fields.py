@@ -25,6 +25,19 @@ PRESET_FIELDS = [
     ('condition', 'Condition', 'text'),
     ('reorder_level', 'Reorder level', 'number'),
 ]
+
+TABLE_COLUMNS = [
+    ('photo', 'Photo', False),
+    ('item', 'Item', True),
+    ('main_colour', 'Main colour', False),
+    ('secondary_colour', 'Secondary colour', False),
+    ('pattern', 'Pattern', False),
+    ('price', 'Price', False),
+    ('quantity', 'Available Qty', False),
+    ('barcodes', 'Barcodes', False),
+    ('status', 'Status', False),
+]
+
 ALLOWED_TYPES = {'text', 'number', 'money', 'boolean', 'select'}
 
 
@@ -53,35 +66,42 @@ def configure(app, server):
             );
             CREATE TABLE IF NOT EXISTS core_field_settings (
                 field_key TEXT PRIMARY KEY,
-                enabled INTEGER NOT NULL DEFAULT 1
+                enabled INTEGER NOT NULL DEFAULT 1,
+                sort_order INTEGER NOT NULL DEFAULT 100
+            );
+            CREATE TABLE IF NOT EXISTS inventory_table_columns (
+                field_key TEXT PRIMARY KEY,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                sort_order INTEGER NOT NULL DEFAULT 100
             );
             ''')
-            for key, _label, _field_type, _required in CORE_FIELDS:
-                conn.execute('INSERT OR IGNORE INTO core_field_settings(field_key,enabled) VALUES(?,1)', (key,))
-            for order, (key, label, field_type) in enumerate(PRESET_FIELDS, 10):
+            core_cols = {r['name'] for r in conn.execute('PRAGMA table_info(core_field_settings)').fetchall()}
+            if 'sort_order' not in core_cols:
+                conn.execute('ALTER TABLE core_field_settings ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 100')
+            for order, (key, _label, _field_type, _required) in enumerate(CORE_FIELDS, 10):
+                conn.execute('INSERT OR IGNORE INTO core_field_settings(field_key,enabled,sort_order) VALUES(?,1,?)', (key, order))
+            for order, (key, label, field_type) in enumerate(PRESET_FIELDS, 100):
                 conn.execute('''INSERT OR IGNORE INTO custom_field_definitions
                     (field_key,label,field_type,options,enabled,is_preset,sort_order,created_at)
                     VALUES(?,?,?,NULL,0,1,?,?)''',
                     (key, label, field_type, order, datetime.now().isoformat(timespec='seconds')))
-
-    def core_visibility():
-        ensure_schema()
-        with server.db() as conn:
-            rows = conn.execute('SELECT field_key,enabled FROM core_field_settings').fetchall()
-        state = {r['field_key']: bool(r['enabled']) for r in rows}
-        # Required stock-model fields can never be hidden.
-        for key, _label, _type, required in CORE_FIELDS:
-            if required:
-                state[key] = True
-        return state
+            for order, (key, _label, _required) in enumerate(TABLE_COLUMNS, 10):
+                conn.execute('INSERT OR IGNORE INTO inventory_table_columns(field_key,enabled,sort_order) VALUES(?,1,?)', (key, order))
 
     def core_fields_for_settings():
-        state = core_visibility()
-        return [
-            {'field_key': key, 'label': label, 'field_type': field_type,
-             'required': required, 'enabled': True if required else state.get(key, True)}
-            for key, label, field_type, required in CORE_FIELDS
-        ]
+        ensure_schema()
+        with server.db() as conn:
+            settings = {r['field_key']: r for r in conn.execute('SELECT * FROM core_field_settings').fetchall()}
+        result = []
+        for key, label, field_type, required in CORE_FIELDS:
+            row = settings.get(key)
+            result.append({
+                'kind': 'core', 'id': key, 'field_key': key, 'label': label,
+                'field_type': field_type, 'required': required,
+                'enabled': True if required else bool(row['enabled']) if row else True,
+                'sort_order': int(row['sort_order']) if row else 100,
+            })
+        return result
 
     def fields(enabled_only=False):
         ensure_schema()
@@ -91,6 +111,36 @@ def configure(app, server):
         sql += ' ORDER BY sort_order,id'
         with server.db() as conn:
             return conn.execute(sql).fetchall()
+
+    def ordered_product_fields(enabled_only=True):
+        result = core_fields_for_settings()
+        for row in fields(enabled_only=False):
+            result.append({
+                'kind': 'custom', 'id': int(row['id']), 'field_key': row['field_key'],
+                'label': row['label'], 'field_type': row['field_type'], 'options': row['options'],
+                'required': False, 'enabled': bool(row['enabled']),
+                'is_preset': bool(row['is_preset']), 'sort_order': int(row['sort_order']),
+            })
+        if enabled_only:
+            result = [f for f in result if f['enabled']]
+        return sorted(result, key=lambda f: (f['sort_order'], 0 if f['kind'] == 'core' else 1, str(f['id'])))
+
+    def table_columns_for_settings(enabled_only=False):
+        ensure_schema()
+        with server.db() as conn:
+            settings = {r['field_key']: r for r in conn.execute('SELECT * FROM inventory_table_columns').fetchall()}
+        result = []
+        for key, label, required in TABLE_COLUMNS:
+            row = settings.get(key)
+            enabled = True if required else bool(row['enabled']) if row else True
+            result.append({'field_key': key, 'label': label, 'required': required, 'enabled': enabled,
+                           'sort_order': int(row['sort_order']) if row else 100})
+        if enabled_only:
+            result = [c for c in result if c['enabled']]
+        return sorted(result, key=lambda c: (c['sort_order'], c['field_key']))
+
+    def core_visibility():
+        return {f['field_key']: f['enabled'] for f in core_fields_for_settings()}
 
     def values_for(product_id):
         if not product_id:
@@ -118,19 +168,22 @@ def configure(app, server):
 
     app.extensions['ensure_custom_fields_schema'] = ensure_schema
     app.extensions['core_field_visibility'] = core_visibility
+    app.extensions['ordered_product_fields'] = ordered_product_fields
+    app.extensions['table_columns'] = table_columns_for_settings
 
     @app.context_processor
     def custom_field_context():
         try:
-            active = fields(enabled_only=True)
             product_id = request.view_args.get('product_id') if request.view_args else None
             return {
-                'custom_fields': active,
+                'product_fields': ordered_product_fields(enabled_only=True),
+                'custom_fields': fields(enabled_only=True),
                 'custom_values': values_for(product_id),
                 'field_visibility': core_visibility(),
+                'table_columns': table_columns_for_settings(enabled_only=True),
             }
         except Exception:
-            return {'custom_fields': [], 'custom_values': {}, 'field_visibility': {}}
+            return {'product_fields': [], 'custom_fields': [], 'custom_values': {}, 'field_visibility': {}, 'table_columns': []}
 
     @app.after_request
     def save_product_custom_fields(response):
@@ -152,11 +205,9 @@ def configure(app, server):
 
     @app.get('/account/fields')
     def account_fields():
-        return render_template(
-            'fields.html',
-            core_fields=core_fields_for_settings(),
-            fields=fields(enabled_only=False),
-        )
+        return render_template('fields.html',
+                               product_fields=ordered_product_fields(enabled_only=False),
+                               table_fields=table_columns_for_settings(enabled_only=False))
 
     @app.post('/account/fields/core/toggle/<field_key>')
     def toggle_account_core_field(field_key):
@@ -170,10 +221,7 @@ def configure(app, server):
         with server.db() as conn:
             row = conn.execute('SELECT enabled FROM core_field_settings WHERE field_key=?', (field_key,)).fetchone()
             enabled = bool(row['enabled']) if row else True
-            conn.execute('''INSERT INTO core_field_settings(field_key,enabled) VALUES(?,?)
-                            ON CONFLICT(field_key) DO UPDATE SET enabled=excluded.enabled''',
-                         (field_key, 0 if enabled else 1))
-        flash('Field visibility updated for this account.', 'success')
+            conn.execute('UPDATE core_field_settings SET enabled=? WHERE field_key=?', (0 if enabled else 1, field_key))
         return redirect(url_for('account_fields'))
 
     @app.post('/account/fields/toggle/<int:field_id>')
@@ -184,8 +232,44 @@ def configure(app, server):
             if not row:
                 abort(404)
             conn.execute('UPDATE custom_field_definitions SET enabled=? WHERE id=?', (0 if row['enabled'] else 1, field_id))
-        flash('Field visibility updated for this account.', 'success')
         return redirect(url_for('account_fields'))
+
+    @app.post('/account/fields/table/toggle/<field_key>')
+    def toggle_table_field(field_key):
+        definition = next((f for f in TABLE_COLUMNS if f[0] == field_key), None)
+        if not definition:
+            abort(404)
+        if definition[2]:
+            flash(f'{definition[1]} must stay visible in the table.', 'info')
+            return redirect(url_for('account_fields'))
+        ensure_schema()
+        with server.db() as conn:
+            row = conn.execute('SELECT enabled FROM inventory_table_columns WHERE field_key=?', (field_key,)).fetchone()
+            enabled = bool(row['enabled']) if row else True
+            conn.execute('UPDATE inventory_table_columns SET enabled=? WHERE field_key=?', (0 if enabled else 1, field_key))
+        return redirect(url_for('account_fields'))
+
+    @app.post('/account/fields/order')
+    def save_field_order():
+        ensure_schema()
+        kind = request.form.get('kind', '')
+        keys = [k for k in request.form.get('order', '').split(',') if k]
+        with server.db() as conn:
+            if kind == 'product':
+                for order, token in enumerate(keys, 10):
+                    if token.startswith('core:'):
+                        conn.execute('UPDATE core_field_settings SET sort_order=? WHERE field_key=?', (order, token[5:]))
+                    elif token.startswith('custom:'):
+                        try:
+                            conn.execute('UPDATE custom_field_definitions SET sort_order=? WHERE id=?', (order, int(token[7:])))
+                        except ValueError:
+                            pass
+            elif kind == 'table':
+                for order, key in enumerate(keys, 10):
+                    conn.execute('UPDATE inventory_table_columns SET sort_order=? WHERE field_key=?', (order, key))
+            else:
+                abort(400)
+        return ('', 204)
 
     @app.post('/account/fields/add')
     def add_account_field():
