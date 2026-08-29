@@ -10,9 +10,19 @@
 <div class="flash info">Physical item barcodes are managed from the product page. Product quantity is calculated from the number of item barcodes still Available.</div>
 {% endif %}
 <label>Item *<input id="item" name="item" required value="{{ product.item if product else '' }}" placeholder="Cushion, pencil case, blanket…"></label>
-<div class="two-col"><label>Main colour<input name="main_colour" value="{{ product.main_colour if product else '' }}" placeholder="Blue"></label><label>Secondary colour<input name="secondary_colour" value="{{ product.secondary_colour if product else '' }}" placeholder="Cream"></label></div>
-<label>Pattern<input name="pattern" value="{{ product.pattern if product else '' }}" placeholder="Floral, striped, plain…"></label>
-<label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label>
+
+{% if field_visibility.get('main_colour', True) or field_visibility.get('secondary_colour', True) %}
+<div class="two-col">
+  {% if field_visibility.get('main_colour', True) %}<label>Main colour<input name="main_colour" value="{{ product.main_colour if product else '' }}" placeholder="Blue"></label>{% elif product %}<input type="hidden" name="main_colour" value="{{ product.main_colour }}">{% endif %}
+  {% if field_visibility.get('secondary_colour', True) %}<label>Secondary colour<input name="secondary_colour" value="{{ product.secondary_colour if product else '' }}" placeholder="Cream"></label>{% elif product %}<input type="hidden" name="secondary_colour" value="{{ product.secondary_colour }}">{% endif %}
+</div>
+{% else %}
+  {% if product %}<input type="hidden" name="main_colour" value="{{ product.main_colour }}"><input type="hidden" name="secondary_colour" value="{{ product.secondary_colour }}">{% endif %}
+{% endif %}
+
+{% if field_visibility.get('pattern', True) %}<label>Pattern<input name="pattern" value="{{ product.pattern if product else '' }}" placeholder="Floral, striped, plain…"></label>{% elif product %}<input type="hidden" name="pattern" value="{{ product.pattern }}">{% endif %}
+{% if field_visibility.get('price', True) %}<label>Price (£)<input name="price" inputmode="decimal" value="{{ '%.2f'|format(product.price_pence / 100) if product else '' }}" placeholder="18.00"></label>{% elif product %}<input type="hidden" name="price" value="{{ '%.2f'|format(product.price_pence / 100) }}">{% endif %}
+
 {% if custom_fields %}
 <h2>Extra details <small>configured for this account</small></h2>
 {% for field in custom_fields %}
@@ -30,7 +40,10 @@
   {% endif %}
 {% endfor %}
 {% endif %}
-<label>Notes<textarea name="notes" rows="3" placeholder="Optional internal notes">{{ product.notes if product else '' }}</textarea></label>
+
+{% if field_visibility.get('notes', True) %}<label>Notes<textarea name="notes" rows="3" placeholder="Optional internal notes">{{ product.notes if product else '' }}</textarea></label>{% elif product %}<input type="hidden" name="notes" value="{{ product.notes or '' }}">{% endif %}
+
+{% if field_visibility.get('photos', True) %}
 <h2>Photos <small>up to 5 primary photos</small></h2>
 <div class="photo-slots">
   {% for i in range(1,6) %}
@@ -46,6 +59,8 @@
     </div>
   {% endfor %}
 </div>
+{% endif %}
+
 <div class="form-actions"><a class="btn" href="{{ url_for('index') }}">Cancel</a><button class="btn primary big" type="submit">{{ 'Create Duplicate' if duplicate_mode else 'Save Product' }}</button></div>
 </form>
 {% endblock %}
