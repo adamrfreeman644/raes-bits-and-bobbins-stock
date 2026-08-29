@@ -26,7 +26,7 @@
     <div class="current-product"><div class="current-label">CURRENT PRODUCT</div><div class="current-code">{{ current.inventory_id }}</div><div class="current-name">{{ current.item }}</div><div class="current-time">Photo window started {{ current.scanned_at[11:19] }}</div></div>
     {% else %}<div class="current-product empty-current">Scan the first product to begin the first photo window.</div>{% endif %}
     {% if scans %}<div class="scan-history"><h2>Recent scans</h2>{% for scan in scans[:6] %}<div class="scan-row"><strong>{{ scan.inventory_id }}</strong><span>{{ scan.item }}</span><time>{{ scan.scanned_at[11:19] }}</time></div>{% endfor %}</div>{% endif %}
-    <form method="post" action="{{ url_for('photoshoot.end_session') }}"><button class="btn danger big full" type="submit">End Photo Shoot</button></form>
+    <form method="post" action="{{ url_for('photoshoot.end_session') }}" data-end-shoot-form><button class="btn danger big full" type="submit">End Photo Shoot</button></form>
   </section>
   {% else %}
   <section class="shoot-start-card"><h2>Ready for a new shoot</h2><p>Start the session, then scan products one after another as quickly as needed. Every scan creates a timestamp marker.</p><form method="post" action="{{ url_for('photoshoot.start_session') }}"><button class="btn primary big" type="submit">Start Photo Shoot</button></form></section>
@@ -79,6 +79,15 @@
       e.form.requestSubmit();
     }
   });
+  const endForm=document.querySelector('[data-end-shoot-form]');
+  if(endForm){
+    endForm.addEventListener('submit',event=>{
+      if(!window.confirm('End this photo shoot?\n\nNo more scan markers can be added after it is ended.')){
+        event.preventDefault();
+        setTimeout(keepScannerReady,80);
+      }
+    });
+  }
 })();
 </script>{% endif %}
 <script>
