@@ -3,16 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F97316">
   <title>{% block title %}{{ business_name or 'Stock Manager' }}{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='brand/favicon.svg') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='brand/app-icon.svg') }}">
+  <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='detail-fix.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='v010.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='accounts.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='compact-menu.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='branding.css') }}">
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="{{ url_for('dashboard') if current_account else url_for('login') }}">{{ business_name or 'Stock Manager' }}</a>
+  <a class="brand stocktake-brand" href="{{ url_for('dashboard') if current_account else url_for('login') }}" aria-label="StockTake home">
+    <img class="stocktake-brand-mark" src="{{ url_for('static', filename='brand/stocktake-mark.svg') }}" alt="">
+    <span class="stocktake-brand-copy">
+      <span class="stocktake-brand-name"><span class="stock">STOCK</span><span class="take">TAKE</span></span>
+      <span class="stocktake-brand-account">{{ business_name or 'Inventory Manager' }}</span>
+    </span>
+  </a>
   <div class="menu-wrap">
     <span class="version">v{{ app_version }}</span>
     {% if current_account %}

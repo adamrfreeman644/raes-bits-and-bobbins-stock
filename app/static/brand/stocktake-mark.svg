@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+<title id="title">StockTake</title>
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M64 9 111 36 64 63 17 36 64 9Z" fill="#fff" stroke="#F97316" stroke-width="9"/>
+  <path d="M17 36v55l47 28V63L17 36Z" fill="#fff" stroke="#F97316" stroke-width="9"/>
+  <path d="M111 36v55l-47 28V63l47-27Z" fill="#fff" stroke="#2D3748" stroke-width="9"/>
+  <path d="M31 57v34M40 62v35M49 67v35" stroke="#2D3748" stroke-width="6"/>
+  <path d="m78 63 5 5 9-12M78 79l5 5 9-12M78 95l5 5 9-12" stroke="#F97316" stroke-width="5"/>
+  <path d="M98 59h5M98 75h5M98 91h5" stroke="#2D3748" stroke-width="4"/>
+</g>
+</svg>
