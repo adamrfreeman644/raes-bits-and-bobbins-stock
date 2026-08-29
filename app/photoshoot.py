@@ -1,12 +1,19 @@
+import json
 import os
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from PIL import Image, ExifTags
 from werkzeug.utils import secure_filename
+
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR / 'data'))
@@ -43,6 +50,17 @@ def init_tables():
         ''')
 
 
+def _parse_exif_datetime(raw):
+    if not raw:
+        return None
+    for fmt in ('%Y:%m:%d %H:%M:%S', '%Y-%m-%d %H:%M:%S'):
+        try:
+            return datetime.strptime(str(raw), fmt)
+        except ValueError:
+            pass
+    return None
+
+
 def exif_taken_at(file_storage):
     try:
         file_storage.stream.seek(0)
@@ -50,14 +68,21 @@ def exif_taken_at(file_storage):
             exif = img.getexif()
             if not exif:
                 return None
-            tags = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
-            raw = tags.get('DateTimeOriginal') or tags.get('DateTimeDigitized') or tags.get('DateTime')
-            if not raw:
-                return None
+
+            # DateTimeOriginal usually lives in the EXIF IFD on modern phones.
             try:
-                return datetime.strptime(str(raw), '%Y:%m:%d %H:%M:%S')
-            except ValueError:
-                return None
+                exif_ifd = exif.get_ifd(ExifTags.IFD.Exif)
+            except Exception:
+                exif_ifd = {}
+            for key in (36867, 36868):  # DateTimeOriginal, DateTimeDigitized
+                taken = _parse_exif_datetime(exif_ifd.get(key))
+                if taken:
+                    return taken
+
+            tags = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
+            return _parse_exif_datetime(
+                tags.get('DateTimeOriginal') or tags.get('DateTimeDigitized') or tags.get('DateTime')
+            )
     except Exception:
         return None
 
@@ -138,9 +163,25 @@ def end_session():
 def upload_batch(session_id):
     init_tables()
     files = request.files.getlist('photos')
-    if not files:
+    if not files or not any(f and f.filename for f in files):
         flash('Choose one or more photos.', 'error')
         return redirect(url_for('photoshoot.photo_shoot'))
+
+    try:
+        client_times = json.loads(request.form.get('photo_times', '[]'))
+        if not isinstance(client_times, list):
+            client_times = []
+    except (TypeError, ValueError, json.JSONDecodeError):
+        client_times = []
+    try:
+        device_offset = int(request.form.get('device_tz_offset', '0'))
+    except ValueError:
+        device_offset = 0
+
+    # Browser offset is UTC - device local. The app currently stores naive server-local
+    # timestamps, so translate camera-local EXIF time into the server's local clock.
+    server_offset_td = datetime.now().astimezone().utcoffset() or timedelta(0)
+    server_offset_minutes = int(server_offset_td.total_seconds() // 60)
 
     with db() as conn:
         session = conn.execute('SELECT * FROM photo_shoot_sessions WHERE id=?', (session_id,)).fetchone()
@@ -156,11 +197,28 @@ def upload_batch(session_id):
         session_end = datetime.fromisoformat(session['ended_at']) if session['ended_at'] else datetime.now()
         assigned = []
         unmatched = []
-        for f in files:
-            taken = exif_taken_at(f)
-            if not taken:
-                unmatched.append({'name': f.filename, 'reason': 'No readable EXIF Date Taken timestamp'})
+
+        for index, f in enumerate(files):
+            if not f or not f.filename:
                 continue
+
+            taken = exif_taken_at(f)
+            timestamp_source = 'camera Date Taken'
+            if taken:
+                taken = taken + timedelta(minutes=device_offset + server_offset_minutes)
+            elif index < len(client_times):
+                try:
+                    modified_ms = float(client_times[index])
+                    if modified_ms > 0:
+                        taken = datetime.fromtimestamp(modified_ms / 1000.0)
+                        timestamp_source = 'file timestamp fallback'
+                except (TypeError, ValueError, OSError, OverflowError):
+                    taken = None
+
+            if not taken:
+                unmatched.append({'name': f.filename, 'reason': 'No readable camera or file timestamp'})
+                continue
+
             target = None
             for i, (start, scan) in enumerate(markers):
                 end = markers[i + 1][0] if i + 1 < len(markers) else session_end
@@ -168,15 +226,22 @@ def upload_batch(session_id):
                     target = scan
                     break
             if not target:
-                unmatched.append({'name': f.filename, 'reason': f'Outside scan window ({taken})'})
+                unmatched.append({'name': f.filename, 'reason': f'Outside scan window ({taken.strftime("%Y-%m-%d %H:%M:%S")}, {timestamp_source})'})
                 continue
+
             existing = conn.execute('SELECT COALESCE(MAX(sort_order),0) AS n FROM photos WHERE product_id=?', (target['product_id'],)).fetchone()['n']
             filename = save_photo(target['product_id'], f, existing + 1)
             if not filename:
                 unmatched.append({'name': f.filename, 'reason': 'Unsupported image type'})
                 continue
             conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)', (target['product_id'], filename, existing + 1))
-            assigned.append({'name': f.filename, 'taken': taken, 'inventory_id': target['inventory_id'], 'item': target['item']})
+            assigned.append({
+                'name': f.filename,
+                'taken': taken,
+                'inventory_id': target['inventory_id'],
+                'item': target['item'],
+                'timestamp_source': timestamp_source,
+            })
 
     with db() as conn:
         recent = conn.execute("SELECT * FROM photo_shoot_sessions ORDER BY id DESC LIMIT 8").fetchall()
