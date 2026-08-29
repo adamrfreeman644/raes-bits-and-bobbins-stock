@@ -18,19 +18,19 @@ configure_dashboard_recent(app, server)
 configure_barcode_fixes(app, server)
 configure_table_barcode_fix(app, server)
 
-# Photo Shoot deliberately supports large multi-image batches. The original
-# 40 MB Flask limit was suitable for individual product photos but rejected a
-# normal phone photo batch before the Photo Shoot route ever saw it.
+# Photo Shoot now stages files one request at a time, so the batch itself has no
+# practical Flask-size ceiling. Keep only a generous per-file guard to prevent a
+# malformed request from filling the server unexpectedly.
 try:
-    max_upload_mb = max(40, int(os.getenv('MAX_UPLOAD_MB', '512')))
+    max_single_upload_gb = max(1, int(os.getenv('MAX_SINGLE_UPLOAD_GB', '8')))
 except ValueError:
-    max_upload_mb = 512
-app.config['MAX_CONTENT_LENGTH'] = max_upload_mb * 1024 * 1024
+    max_single_upload_gb = 8
+app.config['MAX_CONTENT_LENGTH'] = max_single_upload_gb * 1024 * 1024 * 1024
 
 
 @app.errorhandler(RequestEntityTooLarge)
 def upload_too_large(_error):
-    flash(f'That photo batch is larger than the {max_upload_mb} MB upload limit. Select a smaller batch or raise MAX_UPLOAD_MB.', 'error')
+    flash(f'That individual file is larger than the {max_single_upload_gb} GB per-file upload limit. Raise MAX_SINGLE_UPLOAD_GB if required.', 'error')
     return redirect(url_for('photoshoot.photo_shoot'))
 
 
