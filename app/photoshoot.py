@@ -2,10 +2,10 @@ import json
 import os
 import sqlite3
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for, flash
 from PIL import Image, ExifTags
 from werkzeug.utils import secure_filename
 
@@ -27,6 +27,7 @@ bp = Blueprint('photoshoot', __name__, url_prefix='/photo-shoot')
 def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys=ON')
     return conn
 
 
@@ -47,57 +48,63 @@ def init_tables():
             FOREIGN KEY(session_id) REFERENCES photo_shoot_sessions(id),
             FOREIGN KEY(product_id) REFERENCES products(id)
         );
+        CREATE TABLE IF NOT EXISTS photo_upload_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'Uploading',
+            device_tz_offset INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            queued_at TEXT,
+            started_at TEXT,
+            finished_at TEXT,
+            total_files INTEGER NOT NULL DEFAULT 0,
+            uploaded_files INTEGER NOT NULL DEFAULT 0,
+            processed_files INTEGER NOT NULL DEFAULT 0,
+            assigned_count INTEGER NOT NULL DEFAULT 0,
+            unmatched_count INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            FOREIGN KEY(session_id) REFERENCES photo_shoot_sessions(id)
+        );
+        CREATE TABLE IF NOT EXISTS photo_upload_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            order_index INTEGER NOT NULL,
+            original_name TEXT NOT NULL,
+            staged_name TEXT NOT NULL,
+            modified_ms REAL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'Staged',
+            result_json TEXT,
+            FOREIGN KEY(job_id) REFERENCES photo_upload_jobs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_photo_jobs_status ON photo_upload_jobs(status,id);
+        CREATE INDEX IF NOT EXISTS idx_photo_items_job ON photo_upload_items(job_id,order_index,id);
         ''')
 
 
-def _parse_exif_datetime(raw):
-    if not raw:
+def _staging_dir(job_id):
+    path = Path(PHOTO_DIR) / '.photo-shoot-staging' / f'job-{int(job_id)}'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _job_payload(conn, job_id, include_items=False):
+    job = conn.execute('SELECT * FROM photo_upload_jobs WHERE id=?', (job_id,)).fetchone()
+    if not job:
         return None
-    for fmt in ('%Y:%m:%d %H:%M:%S', '%Y-%m-%d %H:%M:%S'):
-        try:
-            return datetime.strptime(str(raw), fmt)
-        except ValueError:
-            pass
-    return None
-
-
-def exif_taken_at(file_storage):
-    try:
-        file_storage.stream.seek(0)
-        with Image.open(file_storage.stream) as img:
-            exif = img.getexif()
-            if not exif:
-                return None
-
-            # DateTimeOriginal usually lives in the EXIF IFD on modern phones.
+    payload = {k: job[k] for k in job.keys()}
+    if include_items:
+        rows = conn.execute('SELECT * FROM photo_upload_items WHERE job_id=? ORDER BY order_index,id', (job_id,)).fetchall()
+        items = []
+        for row in rows:
+            item = {k: row[k] for k in row.keys()}
             try:
-                exif_ifd = exif.get_ifd(ExifTags.IFD.Exif)
-            except Exception:
-                exif_ifd = {}
-            for key in (36867, 36868):  # DateTimeOriginal, DateTimeDigitized
-                taken = _parse_exif_datetime(exif_ifd.get(key))
-                if taken:
-                    return taken
-
-            tags = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
-            return _parse_exif_datetime(
-                tags.get('DateTimeOriginal') or tags.get('DateTimeDigitized') or tags.get('DateTime')
-            )
-    except Exception:
-        return None
-
-
-def save_photo(product_id, file_storage, sort_order):
-    original = secure_filename(file_storage.filename or '')
-    if '.' not in original:
-        return None
-    ext = original.rsplit('.', 1)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return None
-    filename = f"p{product_id}_{uuid.uuid4().hex}.{ext}"
-    file_storage.stream.seek(0)
-    file_storage.save(PHOTO_DIR / filename)
-    return filename
+                item['result'] = json.loads(item.pop('result_json') or '{}')
+            except (TypeError, ValueError, json.JSONDecodeError):
+                item['result'] = {}
+            items.append(item)
+        payload['items'] = items
+    return payload
 
 
 @bp.route('/')
@@ -114,7 +121,12 @@ def photo_shoot():
                                     WHERE s.session_id=? ORDER BY s.scanned_at DESC''', (session['id'],)).fetchall()
             current = scans[0] if scans else None
         recent = conn.execute("SELECT * FROM photo_shoot_sessions ORDER BY id DESC LIMIT 8").fetchall()
-    return render_template('photoshoot.html', session=session, scans=scans, current=current, recent=recent, results=None)
+        jobs = {}
+        for shoot in recent:
+            job = conn.execute('SELECT * FROM photo_upload_jobs WHERE session_id=? ORDER BY id DESC LIMIT 1', (shoot['id'],)).fetchone()
+            if job:
+                jobs[shoot['id']] = {k: job[k] for k in job.keys()}
+    return render_template('photoshoot.html', session=session, scans=scans, current=current, recent=recent, jobs=jobs)
 
 
 @bp.post('/start')
@@ -155,95 +167,89 @@ def end_session():
     now = datetime.now().isoformat(timespec='seconds')
     with db() as conn:
         conn.execute("UPDATE photo_shoot_sessions SET status='Ended', ended_at=? WHERE status='Active'", (now,))
-    flash('Photo shoot ended. You can now upload the full photo batch.', 'success')
+    flash('Photo shoot ended. Select the batch and StockTake will stage it safely before assigning in the background.', 'success')
     return redirect(url_for('photoshoot.photo_shoot'))
 
 
-@bp.post('/upload/<int:session_id>')
-def upload_batch(session_id):
+@bp.post('/upload/start/<int:session_id>')
+def start_batch_upload(session_id):
     init_tables()
-    files = request.files.getlist('photos')
-    if not files or not any(f and f.filename for f in files):
-        flash('Choose one or more photos.', 'error')
-        return redirect(url_for('photoshoot.photo_shoot'))
-
     try:
-        client_times = json.loads(request.form.get('photo_times', '[]'))
-        if not isinstance(client_times, list):
-            client_times = []
-    except (TypeError, ValueError, json.JSONDecodeError):
-        client_times = []
-    try:
-        device_offset = int(request.form.get('device_tz_offset', '0'))
+        offset = int(request.form.get('device_tz_offset', '0'))
     except ValueError:
-        device_offset = 0
+        offset = 0
+    with db() as conn:
+        shoot = conn.execute('SELECT * FROM photo_shoot_sessions WHERE id=?', (session_id,)).fetchone()
+        scans = conn.execute('SELECT COUNT(*) AS n FROM photo_shoot_scans WHERE session_id=?', (session_id,)).fetchone()['n']
+        if not shoot or not scans:
+            return jsonify({'ok': False, 'error': 'That shoot has no scan markers.'}), 400
+        cur = conn.execute('''INSERT INTO photo_upload_jobs(session_id,status,device_tz_offset,created_at)
+                              VALUES(?, 'Uploading', ?, ?)''',
+                           (session_id, offset, datetime.now().isoformat(timespec='seconds')))
+        job_id = cur.lastrowid
+    _staging_dir(job_id)
+    return jsonify({'ok': True, 'job_id': job_id})
 
-    # Browser offset is UTC - device local. The app currently stores naive server-local
-    # timestamps, so translate camera-local EXIF time into the server's local clock.
-    server_offset_td = datetime.now().astimezone().utcoffset() or timedelta(0)
-    server_offset_minutes = int(server_offset_td.total_seconds() // 60)
+
+@bp.post('/upload/file/<int:job_id>')
+def stage_batch_file(job_id):
+    init_tables()
+    uploaded = request.files.get('photo')
+    if not uploaded or not uploaded.filename:
+        return jsonify({'ok': False, 'error': 'No photo was supplied.'}), 400
+    original = secure_filename(uploaded.filename) or f'photo-{uuid.uuid4().hex}'
+    if '.' not in original or original.rsplit('.', 1)[1].lower() not in ALLOWED_EXTENSIONS:
+        return jsonify({'ok': False, 'error': f'{uploaded.filename}: unsupported image type'}), 400
+    try:
+        order_index = int(request.form.get('order_index', '0'))
+    except ValueError:
+        order_index = 0
+    try:
+        modified_ms = float(request.form.get('modified_ms', '0') or 0)
+    except ValueError:
+        modified_ms = 0
 
     with db() as conn:
-        session = conn.execute('SELECT * FROM photo_shoot_sessions WHERE id=?', (session_id,)).fetchone()
-        scans = conn.execute('''SELECT s.*, p.item,
-                                (SELECT ib.barcode FROM item_barcodes ib WHERE ib.product_id=p.id ORDER BY ib.id LIMIT 1) AS inventory_id
-                                FROM photo_shoot_scans s JOIN products p ON p.id=s.product_id
-                                WHERE s.session_id=? ORDER BY s.scanned_at''', (session_id,)).fetchall()
-        if not session or not scans:
-            flash('That photo shoot has no scan markers.', 'error')
-            return redirect(url_for('photoshoot.photo_shoot'))
+        job = conn.execute('SELECT * FROM photo_upload_jobs WHERE id=?', (job_id,)).fetchone()
+        if not job or job['status'] != 'Uploading':
+            return jsonify({'ok': False, 'error': 'This upload job is no longer accepting files.'}), 409
 
-        markers = [(datetime.fromisoformat(s['scanned_at']), s) for s in scans]
-        session_end = datetime.fromisoformat(session['ended_at']) if session['ended_at'] else datetime.now()
-        assigned = []
-        unmatched = []
-
-        for index, f in enumerate(files):
-            if not f or not f.filename:
-                continue
-
-            taken = exif_taken_at(f)
-            timestamp_source = 'camera Date Taken'
-            if taken:
-                taken = taken + timedelta(minutes=device_offset + server_offset_minutes)
-            elif index < len(client_times):
-                try:
-                    modified_ms = float(client_times[index])
-                    if modified_ms > 0:
-                        taken = datetime.fromtimestamp(modified_ms / 1000.0)
-                        timestamp_source = 'file timestamp fallback'
-                except (TypeError, ValueError, OSError, OverflowError):
-                    taken = None
-
-            if not taken:
-                unmatched.append({'name': f.filename, 'reason': 'No readable camera or file timestamp'})
-                continue
-
-            target = None
-            for i, (start, scan) in enumerate(markers):
-                end = markers[i + 1][0] if i + 1 < len(markers) else session_end
-                if start <= taken < end:
-                    target = scan
-                    break
-            if not target:
-                unmatched.append({'name': f.filename, 'reason': f'Outside scan window ({taken.strftime("%Y-%m-%d %H:%M:%S")}, {timestamp_source})'})
-                continue
-
-            existing = conn.execute('SELECT COALESCE(MAX(sort_order),0) AS n FROM photos WHERE product_id=?', (target['product_id'],)).fetchone()['n']
-            filename = save_photo(target['product_id'], f, existing + 1)
-            if not filename:
-                unmatched.append({'name': f.filename, 'reason': 'Unsupported image type'})
-                continue
-            conn.execute('INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)', (target['product_id'], filename, existing + 1))
-            assigned.append({
-                'name': f.filename,
-                'taken': taken,
-                'inventory_id': target['inventory_id'],
-                'item': target['item'],
-                'timestamp_source': timestamp_source,
-            })
+    suffix = Path(original).suffix.lower()
+    staged_name = f'{order_index:06d}-{uuid.uuid4().hex}{suffix}'
+    destination = _staging_dir(job_id) / staged_name
+    uploaded.save(destination)
+    size_bytes = destination.stat().st_size
 
     with db() as conn:
-        recent = conn.execute("SELECT * FROM photo_shoot_sessions ORDER BY id DESC LIMIT 8").fetchall()
-    return render_template('photoshoot.html', session=None, scans=[], current=None, recent=recent,
-                           results={'assigned': assigned, 'unmatched': unmatched, 'session_id': session_id})
+        conn.execute('''INSERT INTO photo_upload_items(job_id,order_index,original_name,staged_name,modified_ms,size_bytes,status)
+                        VALUES(?,?,?,?,?,?,'Staged')''',
+                     (job_id, order_index, original, staged_name, modified_ms, size_bytes))
+        conn.execute('UPDATE photo_upload_jobs SET uploaded_files=uploaded_files+1 WHERE id=?', (job_id,))
+        count = conn.execute('SELECT uploaded_files FROM photo_upload_jobs WHERE id=?', (job_id,)).fetchone()['uploaded_files']
+    return jsonify({'ok': True, 'uploaded_files': count, 'size_bytes': size_bytes})
+
+
+@bp.post('/upload/finish/<int:job_id>')
+def finish_batch_upload(job_id):
+    init_tables()
+    with db() as conn:
+        job = conn.execute('SELECT * FROM photo_upload_jobs WHERE id=?', (job_id,)).fetchone()
+        if not job or job['status'] != 'Uploading':
+            return jsonify({'ok': False, 'error': 'Upload job not found or already queued.'}), 409
+        total = conn.execute('SELECT COUNT(*) AS n FROM photo_upload_items WHERE job_id=?', (job_id,)).fetchone()['n']
+        if not total:
+            return jsonify({'ok': False, 'error': 'No photos were uploaded.'}), 400
+        conn.execute('''UPDATE photo_upload_jobs SET status='Queued',total_files=?,uploaded_files=?,queued_at=? WHERE id=?''',
+                     (total, total, datetime.now().isoformat(timespec='seconds'), job_id))
+    return jsonify({'ok': True, 'job_id': job_id, 'status': 'Queued', 'total_files': total})
+
+
+@bp.get('/upload/status/<int:job_id>')
+def batch_upload_status(job_id):
+    init_tables()
+    with db() as conn:
+        payload = _job_payload(conn, job_id, include_items=True)
+    if not payload:
+        return jsonify({'ok': False, 'error': 'Upload job not found.'}), 404
+    payload['ok'] = True
+    return jsonify(payload)
