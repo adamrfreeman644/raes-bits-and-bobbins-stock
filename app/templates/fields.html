@@ -2,56 +2,48 @@
 {% block title %}Inventory Fields · {{ business_name }}{% endblock %}
 {% block content %}
 <style>
-.field-list{display:grid;gap:8px}.field-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:12px;background:#f8f9fa;border:1px solid var(--line);border-radius:12px}.field-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.field-meta .muted{font-size:12px}.toggle-form{margin:0}.toggle-switch{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}.toggle-switch input{position:absolute;opacity:0;pointer-events:none}.toggle-track{width:46px;height:26px;border-radius:999px;background:#cfd4da;position:relative;transition:.18s}.toggle-track:after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:.18s}.toggle-switch input:checked+.toggle-track{background:#3f9b59}.toggle-switch input:checked+.toggle-track:after{transform:translateX(20px)}.toggle-switch input:disabled+.toggle-track{opacity:.65;cursor:not-allowed}.toggle-text{font-size:12px;font-weight:800;min-width:30px}.required-badge{font-size:11px;font-weight:800;padding:4px 7px;border-radius:999px;background:#eef2f7;color:#475569}.field-delete{margin-left:8px}.section-note{margin-top:-4px}@media(max-width:560px){.field-row{grid-template-columns:1fr auto;gap:10px}.field-delete{grid-column:1/-1;margin:0}.field-delete .btn{width:100%}}
+.field-list{display:grid;gap:8px}.field-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;background:#f8f9fa;border:1px solid var(--line);border-radius:12px}.drag-handle{font-size:20px;line-height:1;cursor:grab;padding:8px 4px;color:#64748b;touch-action:none}.dragging{opacity:.45}.field-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.field-meta .muted{font-size:12px}.toggle-form{margin:0}.toggle-switch{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}.toggle-switch input{position:absolute;opacity:0;pointer-events:none}.toggle-track{width:46px;height:26px;border-radius:999px;background:#cfd4da;position:relative;transition:.18s}.toggle-track:after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:.18s}.toggle-switch input:checked+.toggle-track{background:#3f9b59}.toggle-switch input:checked+.toggle-track:after{transform:translateX(20px)}.toggle-switch input:disabled+.toggle-track{opacity:.65;cursor:not-allowed}.toggle-text{font-size:12px;font-weight:800;min-width:30px}.required-badge{font-size:11px;font-weight:800;padding:4px 7px;border-radius:999px;background:#eef2f7;color:#475569}.field-actions{display:flex;align-items:center;gap:8px}.save-state{font-size:12px;color:#64748b;min-height:18px;margin-top:8px}@media(max-width:650px){.field-row{grid-template-columns:auto 1fr}.field-actions{grid-column:2;justify-content:flex-start;flex-wrap:wrap}.field-delete .btn{width:auto}}
 </style>
 <div class="page-head"><a class="btn" href="{{ url_for('account_settings') }}">← Account</a><h1>Inventory fields</h1></div>
 <section class="panel account-panel">
-  <h2>All product fields</h2>
-  <p class="section-note">Choose exactly which fields appear when adding or editing products. These settings apply only to this account.</p>
-  <div class="field-list">
-    {% for field in core_fields %}
-    <div class="field-row">
-      <div>
-        <strong>{{ field.label }}</strong>
-        <div class="field-meta"><span class="muted">{{ field.field_type }} · standard field</span>{% if field.required %}<span class="required-badge">Required</span>{% endif %}</div>
-      </div>
-      <form class="toggle-form" method="post" action="{{ url_for('toggle_account_core_field', field_key=field.field_key) }}">
-        <label class="toggle-switch" title="{{ 'Required by the stock system' if field.required else ('Turn off' if field.enabled else 'Turn on') }}">
-          <input type="checkbox" {{ 'checked' if field.enabled }} {{ 'disabled' if field.required }} onchange="this.form.submit()">
-          <span class="toggle-track"></span><span class="toggle-text">{{ 'On' if field.enabled else 'Off' }}</span>
-        </label>
-      </form>
-    </div>
-    {% endfor %}
-
-    {% for field in fields %}
-    <div class="field-row">
-      <div>
-        <strong>{{ field.label }}</strong>
-        <div class="field-meta"><span class="muted">{{ field.field_type|replace('_',' ')|title }} · {{ 'built-in extra' if field.is_preset else 'custom field' }}</span></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <form class="toggle-form" method="post" action="{{ url_for('toggle_account_field', field_id=field.id) }}">
-          <label class="toggle-switch" title="{{ 'Turn off' if field.enabled else 'Turn on' }}">
-            <input type="checkbox" {{ 'checked' if field.enabled }} onchange="this.form.submit()">
-            <span class="toggle-track"></span><span class="toggle-text">{{ 'On' if field.enabled else 'Off' }}</span>
-          </label>
-        </form>
+  <h2>Product field order</h2>
+  <p>Drag fields into the order you want on Add Product, Edit Product and Duplicate Product. Switch fields on or off independently.</p>
+  <div class="field-list sortable" data-kind="product">
+    {% for field in product_fields %}
+    <div class="field-row" draggable="true" data-key="{{ 'core:' ~ field.field_key if field.kind == 'core' else 'custom:' ~ field.id }}">
+      <div class="drag-handle" title="Drag to reorder">☰</div>
+      <div><strong>{{ field.label }}</strong><div class="field-meta"><span class="muted">{{ field.field_type|replace('_',' ')|title }} · {{ 'standard field' if field.kind == 'core' else ('built-in extra' if field.is_preset else 'custom field') }}</span>{% if field.required %}<span class="required-badge">Required</span>{% endif %}</div></div>
+      <div class="field-actions">
+        {% if field.kind == 'core' %}
+        <form class="toggle-form" method="post" action="{{ url_for('toggle_account_core_field', field_key=field.field_key) }}"><label class="toggle-switch"><input type="checkbox" {{ 'checked' if field.enabled }} {{ 'disabled' if field.required }} onchange="this.form.submit()"><span class="toggle-track"></span><span class="toggle-text">{{ 'On' if field.enabled else 'Off' }}</span></label></form>
+        {% else %}
+        <form class="toggle-form" method="post" action="{{ url_for('toggle_account_field', field_id=field.id) }}"><label class="toggle-switch"><input type="checkbox" {{ 'checked' if field.enabled }} onchange="this.form.submit()"><span class="toggle-track"></span><span class="toggle-text">{{ 'On' if field.enabled else 'Off' }}</span></label></form>
         {% if not field.is_preset %}<form class="field-delete" method="post" action="{{ url_for('delete_account_field', field_id=field.id) }}" onsubmit="return confirm('Delete this custom field and its saved values?')"><button class="btn danger" type="submit">Delete</button></form>{% endif %}
+        {% endif %}
       </div>
     </div>
     {% endfor %}
   </div>
-  <p class="muted">Barcode and Item remain on because products and physical stock records cannot work without them. Turning another field off hides it from Add Product, Edit Product and Duplicate Product without deleting existing saved data.</p>
+  <div class="save-state" data-state="product"></div>
+</section>
+<section class="panel account-panel">
+  <h2>Inventory table columns</h2>
+  <p>Drag columns into a separate order for Table view. These settings do not change the Add Product form order.</p>
+  <div class="field-list sortable" data-kind="table">
+    {% for field in table_fields %}
+    <div class="field-row" draggable="true" data-key="{{ field.field_key }}">
+      <div class="drag-handle" title="Drag to reorder">☰</div>
+      <div><strong>{{ field.label }}</strong><div class="field-meta"><span class="muted">Table column</span>{% if field.required %}<span class="required-badge">Required</span>{% endif %}</div></div>
+      <div class="field-actions"><form class="toggle-form" method="post" action="{{ url_for('toggle_table_field', field_key=field.field_key) }}"><label class="toggle-switch"><input type="checkbox" {{ 'checked' if field.enabled }} {{ 'disabled' if field.required }} onchange="this.form.submit()"><span class="toggle-track"></span><span class="toggle-text">{{ 'On' if field.enabled else 'Off' }}</span></label></form></div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="save-state" data-state="table"></div>
 </section>
 <section class="panel account-panel">
   <h2>Add a custom field</h2>
-  <p>Create any extra field this account needs. New custom fields are enabled immediately.</p>
   <form method="post" action="{{ url_for('add_account_field') }}" class="product-form">
-    <div class="two-col">
-      <label>Field name<input name="label" required placeholder="e.g. Socket type"></label>
-      <label>Field type<select name="field_type" id="customFieldType"><option value="text">Text</option><option value="number">Number</option><option value="money">Money (£)</option><option value="boolean">Yes / No</option><option value="select">Dropdown</option></select></label>
-    </div>
+    <div class="two-col"><label>Field name<input name="label" required placeholder="e.g. Socket type"></label><label>Field type<select name="field_type" id="customFieldType"><option value="text">Text</option><option value="number">Number</option><option value="money">Money (£)</option><option value="boolean">Yes / No</option><option value="select">Dropdown</option></select></label></div>
     <label id="customFieldOptions" style="display:none">Dropdown options<input name="options" placeholder="Option 1, Option 2, Option 3"><small>Separate options with commas.</small></label>
     <button class="btn primary" type="submit">Add Field</button>
   </form>
@@ -59,7 +51,21 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const type=document.getElementById('customFieldType');const options=document.getElementById('customFieldOptions');
-function syncOptions(){options.style.display=type.value==='select'?'block':'none';}type.addEventListener('change',syncOptions);syncOptions();
+const type=document.getElementById('customFieldType'), options=document.getElementById('customFieldOptions');
+function syncOptions(){options.style.display=type.value==='select'?'block':'none'} type.addEventListener('change',syncOptions);syncOptions();
+
+document.querySelectorAll('.sortable').forEach(list=>{
+  let dragged=null;
+  list.addEventListener('dragstart',e=>{const row=e.target.closest('.field-row');if(!row)return;dragged=row;row.classList.add('dragging');e.dataTransfer.effectAllowed='move'});
+  list.addEventListener('dragend',()=>{if(dragged)dragged.classList.remove('dragging');dragged=null;saveOrder(list)});
+  list.addEventListener('dragover',e=>{e.preventDefault();if(!dragged)return;const rows=[...list.querySelectorAll('.field-row:not(.dragging)')];const next=rows.find(r=>e.clientY<r.getBoundingClientRect().top+r.offsetHeight/2);list.insertBefore(dragged,next||null)});
+  let touchRow=null;
+  list.querySelectorAll('.drag-handle').forEach(handle=>{
+    handle.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;touchRow=handle.closest('.field-row');handle.setPointerCapture(e.pointerId);touchRow.classList.add('dragging')});
+    handle.addEventListener('pointermove',e=>{if(!touchRow)return;const el=document.elementFromPoint(e.clientX,e.clientY);const target=el&&el.closest('.field-row');if(target&&target!==touchRow&&target.parentElement===list){const box=target.getBoundingClientRect();list.insertBefore(touchRow,e.clientY<box.top+box.height/2?target:target.nextSibling)}});
+    handle.addEventListener('pointerup',()=>{if(!touchRow)return;touchRow.classList.remove('dragging');touchRow=null;saveOrder(list)});
+  });
+});
+async function saveOrder(list){const kind=list.dataset.kind, order=[...list.querySelectorAll('.field-row')].map(r=>r.dataset.key).join(','), state=document.querySelector(`[data-state="${kind}"]`);state.textContent='Saving order…';const body=new URLSearchParams({kind,order});const r=await fetch('{{ url_for('save_field_order') }}',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});state.textContent=r.ok?'Order saved':'Could not save order';setTimeout(()=>state.textContent='',1800)}
 </script>
 {% endblock %}
