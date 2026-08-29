@@ -21,6 +21,7 @@
     </section>
     <section class="panel account-panel">
       <h2>Authentication</h2>
+      {% if auth_status is defined %}
       <p><strong>Provider:</strong> {{ auth_status.provider }}</p>
       <p><strong>Status:</strong> {{ 'Connected' if auth_status.connected else 'Configuration error' }}</p>
       <p><strong>OIDC issuer:</strong> {{ auth_status.issuer_host or 'Not configured' }}</p>
@@ -28,11 +29,16 @@
       <p><strong>Integration:</strong> {{ auth_status.integration_version }}</p>
       <div class="account-actions"><a class="btn" href="{{ url_for('account_recovery') }}">Password &amp; account security</a></div>
       <p class="muted">Passwords, password reset, MFA and passkeys are managed by Authentik. Inventory Manager does not store your Authentik password.</p>
+      {% else %}
+      <p><strong>Provider:</strong> Local account</p>
+      <p><strong>Signed in as:</strong> {{ account.email }}</p>
+      <p class="muted">Authentik is not currently active for this installation. The local owner login remains available during the migration/rollback period.</p>
+      {% endif %}
     </section>
   </div>
   <section class="panel account-panel">
     <h2>Account isolation</h2>
-    <p>This account has its own inventory database, photo library and backups. Authentication is mapped by the permanent OIDC subject, not by email address.</p>
+    <p>This account has its own inventory database, photo library and backups.</p>
     <div class="account-actions"><form method="post" action="{{ url_for('logout') }}"><button class="btn danger" type="submit">Log out</button></form></div>
   </section>
 </div>
