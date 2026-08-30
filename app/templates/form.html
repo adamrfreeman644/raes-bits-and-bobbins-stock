@@ -52,7 +52,6 @@
 {% endblock %}
 {% block scripts %}
 <script>
-{% if not product or duplicate_mode %}window.addEventListener('load',()=>{const b=document.getElementById('barcode');if(b)b.focus()});{% endif %}
 document.querySelectorAll('.photo-file-input').forEach(input=>{input.addEventListener('change',()=>{const file=input.files&&input.files[0];if(!file)return;const slot=input.closest('.photo-slot');const img=slot.querySelector('.photo-slot-new-preview');const label=slot.querySelector('.photo-slot-label');img.src=URL.createObjectURL(file);img.style.display='block';label.style.display='none';slot.classList.add('pending');});});
 </script>
 {% endblock %}
