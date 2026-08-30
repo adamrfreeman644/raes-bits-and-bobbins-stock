@@ -39,6 +39,13 @@ def configure(app, server):
     def photo_count(conn, product_id):
         return int(conn.execute('SELECT COUNT(*) n FROM photos WHERE product_id=?', (product_id,)).fetchone()['n'])
 
+    def main_photo(conn, product_id):
+        row = conn.execute(
+            'SELECT filename FROM photos WHERE product_id=? ORDER BY sort_order,id LIMIT 1',
+            (product_id,),
+        ).fetchone()
+        return row['filename'] if row else None
+
     def barcode_counts(conn, product_id):
         row = conn.execute(
             """SELECT COUNT(*) total,
@@ -55,6 +62,7 @@ def configure(app, server):
             'barcode_count': total,
             'available_count': available,
             'photo_count': photo_count(conn, product['id']),
+            'main_photo': main_photo(conn, product['id']),
         }
 
     def duplicate_groups(conn):
