@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sqlite3
 import uuid
 from datetime import datetime
@@ -48,6 +49,18 @@ def init_tables():
             FOREIGN KEY(session_id) REFERENCES photo_shoot_sessions(id),
             FOREIGN KEY(product_id) REFERENCES products(id)
         );
+        CREATE TABLE IF NOT EXISTS photo_shoot_pending_scans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            barcode TEXT NOT NULL,
+            scanned_at TEXT NOT NULL,
+            resolved_product_id INTEGER,
+            resolved_at TEXT,
+            FOREIGN KEY(session_id) REFERENCES photo_shoot_sessions(id),
+            FOREIGN KEY(resolved_product_id) REFERENCES products(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pending_scans_session ON photo_shoot_pending_scans(session_id,scanned_at);
+        CREATE INDEX IF NOT EXISTS idx_pending_scans_barcode ON photo_shoot_pending_scans(barcode,resolved_product_id);
         CREATE TABLE IF NOT EXISTS photo_upload_jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER NOT NULL,
@@ -77,6 +90,23 @@ def init_tables():
             result_json TEXT,
             FOREIGN KEY(job_id) REFERENCES photo_upload_jobs(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS photo_pending_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pending_scan_id INTEGER NOT NULL,
+            barcode TEXT NOT NULL,
+            job_id INTEGER NOT NULL,
+            upload_item_id INTEGER NOT NULL UNIQUE,
+            staged_name TEXT NOT NULL,
+            original_name TEXT,
+            created_at TEXT NOT NULL,
+            claimed_at TEXT,
+            product_id INTEGER,
+            FOREIGN KEY(pending_scan_id) REFERENCES photo_shoot_pending_scans(id),
+            FOREIGN KEY(job_id) REFERENCES photo_upload_jobs(id),
+            FOREIGN KEY(upload_item_id) REFERENCES photo_upload_items(id),
+            FOREIGN KEY(product_id) REFERENCES products(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pending_assets_barcode ON photo_pending_assets(barcode,product_id);
         CREATE INDEX IF NOT EXISTS idx_photo_jobs_status ON photo_upload_jobs(status,id);
         CREATE INDEX IF NOT EXISTS idx_photo_items_job ON photo_upload_items(job_id,order_index,id);
         ''')
@@ -107,6 +137,91 @@ def _job_payload(conn, job_id, include_items=False):
     return payload
 
 
+def claim_pending_photos(product_id, barcode):
+    """Attach any Photo Shoot assets waiting for barcode to an existing product."""
+    code = str(barcode or '').strip()
+    if not code:
+        return 0
+    init_tables()
+    claimed = 0
+    with db() as conn:
+        assets = conn.execute(
+            '''SELECT a.*, i.status AS item_status
+               FROM photo_pending_assets a
+               JOIN photo_upload_items i ON i.id=a.upload_item_id
+               WHERE a.barcode=? AND a.product_id IS NULL
+               ORDER BY a.id''',
+            (code,),
+        ).fetchall()
+        for asset in assets:
+            staged = _staging_dir(asset['job_id']) / asset['staged_name']
+            if not staged.exists():
+                continue
+            ext = staged.suffix.lower().lstrip('.')
+            if ext not in ALLOWED_EXTENSIONS:
+                continue
+            filename = f"p{int(product_id)}_pending{int(asset['id'])}.{ext}"
+            final_path = Path(PHOTO_DIR) / filename
+            if not final_path.exists():
+                shutil.copy2(staged, final_path)
+            exists = conn.execute('SELECT 1 FROM photos WHERE filename=? LIMIT 1', (filename,)).fetchone()
+            if not exists:
+                order = conn.execute(
+                    'SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM photos WHERE product_id=?',
+                    (product_id,),
+                ).fetchone()['n']
+                conn.execute(
+                    'INSERT INTO photos(product_id,filename,sort_order) VALUES(?,?,?)',
+                    (product_id, filename, order),
+                )
+            now = datetime.now().isoformat(timespec='seconds')
+            conn.execute(
+                'UPDATE photo_pending_assets SET product_id=?,claimed_at=? WHERE id=?',
+                (product_id, now, asset['id']),
+            )
+            conn.execute(
+                "UPDATE photo_upload_items SET status='Assigned',result_json=? WHERE id=?",
+                (json.dumps({'inventory_id': code, 'item': 'Claimed after product creation', 'pending_product': False}, separators=(',', ':')), asset['upload_item_id']),
+            )
+            conn.execute(
+                'UPDATE photo_upload_jobs SET assigned_count=assigned_count+1 WHERE id=?',
+                (asset['job_id'],),
+            )
+            try:
+                staged.unlink()
+            except OSError:
+                pass
+            claimed += 1
+        if claimed:
+            now = datetime.now().isoformat(timespec='seconds')
+            conn.execute(
+                '''UPDATE photo_shoot_pending_scans
+                   SET resolved_product_id=?,resolved_at=?
+                   WHERE barcode=? AND resolved_product_id IS NULL''',
+                (product_id, now, code),
+            )
+    return claimed
+
+
+@bp.after_app_request
+def claim_pending_after_barcode_use(response):
+    """If any successful POST creates/adds a barcode, immediately claim waiting shoot photos."""
+    if request.method == 'POST' and response.status_code < 400:
+        code = request.form.get('barcode', '').strip()
+        if code:
+            try:
+                with db() as conn:
+                    row = conn.execute(
+                        'SELECT product_id FROM item_barcodes WHERE barcode=? LIMIT 1',
+                        (code,),
+                    ).fetchone()
+                if row:
+                    claim_pending_photos(int(row['product_id']), code)
+            except Exception:
+                pass
+    return response
+
+
 @bp.route('/')
 def photo_shoot():
     init_tables()
@@ -115,10 +230,15 @@ def photo_shoot():
         scans = []
         current = None
         if session:
-            scans = conn.execute('''SELECT s.*, p.item,
-                                    (SELECT ib.barcode FROM item_barcodes ib WHERE ib.product_id=p.id ORDER BY ib.id LIMIT 1) AS inventory_id
+            known = conn.execute('''SELECT s.scanned_at,p.item,
+                                    (SELECT ib.barcode FROM item_barcodes ib WHERE ib.product_id=p.id ORDER BY ib.id LIMIT 1) AS inventory_id,
+                                    0 AS pending
                                     FROM photo_shoot_scans s JOIN products p ON p.id=s.product_id
-                                    WHERE s.session_id=? ORDER BY s.scanned_at DESC''', (session['id'],)).fetchall()
+                                    WHERE s.session_id=?''', (session['id'],)).fetchall()
+            waiting = conn.execute('''SELECT scanned_at,'Pending product' AS item,barcode AS inventory_id,1 AS pending
+                                      FROM photo_shoot_pending_scans
+                                      WHERE session_id=? AND resolved_product_id IS NULL''', (session['id'],)).fetchall()
+            scans = sorted([dict(r) for r in known] + [dict(r) for r in waiting], key=lambda r: r['scanned_at'], reverse=True)
             current = scans[0] if scans else None
         recent = conn.execute("SELECT * FROM photo_shoot_sessions ORDER BY id DESC LIMIT 8").fetchall()
         jobs = {}
@@ -126,7 +246,15 @@ def photo_shoot():
             job = conn.execute('SELECT * FROM photo_upload_jobs WHERE session_id=? ORDER BY id DESC LIMIT 1', (shoot['id'],)).fetchone()
             if job:
                 jobs[shoot['id']] = {k: job[k] for k in job.keys()}
-    return render_template('photoshoot.html', session=session, scans=scans, current=current, recent=recent, jobs=jobs)
+        pending = conn.execute('''SELECT ps.barcode,MIN(ps.scanned_at) AS first_scanned,
+                                 COUNT(DISTINCT ps.id) AS scan_count,
+                                 COUNT(DISTINCT pa.id) AS photo_count
+                                 FROM photo_shoot_pending_scans ps
+                                 LEFT JOIN photo_pending_assets pa ON pa.pending_scan_id=ps.id AND pa.product_id IS NULL
+                                 WHERE ps.resolved_product_id IS NULL
+                                 GROUP BY ps.barcode
+                                 ORDER BY first_scanned DESC''').fetchall()
+    return render_template('photoshoot.html', session=session, scans=scans, current=current, recent=recent, jobs=jobs, pending=pending)
 
 
 @bp.post('/start')
@@ -153,11 +281,16 @@ def scan_product():
             return redirect(url_for('photoshoot.photo_shoot'))
         product = conn.execute('''SELECT p.* FROM item_barcodes ib JOIN products p ON p.id=ib.product_id
                                   WHERE ib.barcode=? LIMIT 1''', (code,)).fetchone()
+        now = datetime.now().isoformat(timespec='seconds')
         if not product:
-            flash(f'Barcode {code} was not found.', 'error')
+            conn.execute(
+                'INSERT INTO photo_shoot_pending_scans(session_id,barcode,scanned_at) VALUES(?,?,?)',
+                (session['id'], code, now),
+            )
+            flash(f'Barcode {code} is not in stock yet. Its photo window is being held until that product is created.', 'info')
             return redirect(url_for('photoshoot.photo_shoot'))
         conn.execute('INSERT INTO photo_shoot_scans(session_id,product_id,scanned_at) VALUES(?,?,?)',
-                     (session['id'], product['id'], datetime.now().isoformat(timespec='seconds')))
+                     (session['id'], product['id'], now))
     return redirect(url_for('photoshoot.photo_shoot'))
 
 
@@ -180,8 +313,9 @@ def start_batch_upload(session_id):
         offset = 0
     with db() as conn:
         shoot = conn.execute('SELECT * FROM photo_shoot_sessions WHERE id=?', (session_id,)).fetchone()
-        scans = conn.execute('SELECT COUNT(*) AS n FROM photo_shoot_scans WHERE session_id=?', (session_id,)).fetchone()['n']
-        if not shoot or not scans:
+        known = conn.execute('SELECT COUNT(*) AS n FROM photo_shoot_scans WHERE session_id=?', (session_id,)).fetchone()['n']
+        pending = conn.execute('SELECT COUNT(*) AS n FROM photo_shoot_pending_scans WHERE session_id=?', (session_id,)).fetchone()['n']
+        if not shoot or not (known or pending):
             return jsonify({'ok': False, 'error': 'That shoot has no scan markers.'}), 400
         cur = conn.execute('''INSERT INTO photo_upload_jobs(session_id,status,device_tz_offset,created_at)
                               VALUES(?, 'Uploading', ?, ?)''',
