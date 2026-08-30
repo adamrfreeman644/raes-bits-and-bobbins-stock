@@ -2,33 +2,35 @@
 {% block title %}Merge Duplicates · {{ business_name }}{% endblock %}
 {% block content %}
 <div class="page-head"><a class="btn" href="{{ url_for('index') }}">← Inventory</a><h1>Merge duplicate stock</h1></div>
-<section class="panel">
+<section class="panel merge-intro">
   <p>This scans the entire active inventory for exact duplicate product records. A match requires the same item name, colours, pattern, price, notes, Tags and every other custom field.</p>
-  <p class="muted">Open any product below to inspect it before merging. You can merge one matching product, one whole group, or all exact duplicate groups.</p>
+  <p class="muted">Click a product number on the left to inspect that product before merging. You can merge one match, one group, or every exact duplicate group.</p>
 </section>
 {% if groups %}
-<section class="panel">
+<section class="panel merge-summary-panel">
   <div class="merge-global-head"><div><h2>{{ groups|length }} duplicate group{{ '' if groups|length == 1 else 's' }} found</h2><p class="muted">Nothing merges until you choose an action below.</p></div>
-  <form method="post" action="{{ url_for('merge_duplicates_global_apply') }}" onsubmit="return confirm('Merge every exact duplicate group shown on this page? This cannot be automatically undone.')"><button class="btn primary big" type="submit">Merge All Exact Duplicates</button></form></div>
+  <form method="post" action="{{ url_for('merge_duplicates_global_apply') }}" onsubmit="return confirm('Merge every exact duplicate group shown on this page? This cannot be automatically undone.')"><button class="btn primary merge-btn merge-all-btn" type="submit">Merge All Exact Duplicates</button></form></div>
 </section>
 <div class="global-merge-list">
 {% for group in groups %}
 <section class="panel merge-group">
   <div class="merge-group-title">
-    <div><strong>{{ group.target.product.item }}</strong><span>{{ group.count }} matching product records</span></div>
-    <div class="merge-group-actions"><span class="status available">Keep #{{ group.target.product.id }}</span><form method="post" action="{{ url_for('merge_duplicate_group', product_id=group.target.product.id) }}" onsubmit="return confirm('Merge every duplicate in this group into #{{ group.target.product.id }}?')"><button class="btn primary" type="submit">Merge This Group</button></form></div>
+    <div class="merge-group-name"><strong>{{ group.target.product.item }}</strong><span>{{ group.count }} matching product records</span></div>
+    <div class="merge-group-actions"><span class="status available">Keep #{{ group.target.product.id }}</span><form method="post" action="{{ url_for('merge_duplicate_group', product_id=group.target.product.id) }}" onsubmit="return confirm('Merge every duplicate in this group into #{{ group.target.product.id }}?')"><button class="btn primary merge-btn" type="submit">Merge Group</button></form></div>
   </div>
   <div class="merge-member keep">
-    <div><strong>#{{ group.target.product.id }} · Keep</strong><span>{{ group.target.barcode_count }} barcodes · {{ group.target.available_count }} available · {{ group.target.photo_count }} photos</span></div>
-    <a class="btn" href="{{ url_for('product_detail', product_id=group.target.product.id) }}">View Product</a>
+    <a class="merge-product-link" href="{{ url_for('product_detail', product_id=group.target.product.id) }}">
+      <strong>#{{ group.target.product.id }} · Keep</strong>
+      <span>{{ group.target.barcode_count }} barcodes · {{ group.target.available_count }} available · {{ group.target.photo_count }} photos</span>
+    </a>
   </div>
   {% for item in group.duplicates %}
   <div class="merge-member">
-    <div><strong>#{{ item.product.id }} · Match for #{{ group.target.product.id }}</strong><span>{{ item.barcode_count }} barcodes · {{ item.available_count }} available · {{ item.photo_count }} photos</span></div>
-    <div class="merge-row-actions">
-      <a class="btn" href="{{ url_for('product_detail', product_id=item.product.id) }}">View Product</a>
-      <form method="post" action="{{ url_for('merge_duplicate_single', product_id=group.target.product.id, source_id=item.product.id) }}" onsubmit="return confirm('Merge product #{{ item.product.id }} into #{{ group.target.product.id }}?')"><button class="btn primary" type="submit">Merge This Match</button></form>
-    </div>
+    <a class="merge-product-link" href="{{ url_for('product_detail', product_id=item.product.id) }}">
+      <strong>#{{ item.product.id }} · Match for #{{ group.target.product.id }}</strong>
+      <span>{{ item.barcode_count }} barcodes · {{ item.available_count }} available · {{ item.photo_count }} photos</span>
+    </a>
+    <form method="post" action="{{ url_for('merge_duplicate_single', product_id=group.target.product.id, source_id=item.product.id) }}" onsubmit="return confirm('Merge product #{{ item.product.id }} into #{{ group.target.product.id }}?')"><button class="btn primary merge-btn" type="submit">Merge Match</button></form>
   </div>
   {% endfor %}
 </section>
@@ -38,6 +40,6 @@
 <section class="panel"><div class="empty-current"><strong>No exact duplicate products found.</strong><br>Nothing in the current stock matches on all required product fields and Tags.</div></section>
 {% endif %}
 <style>
-.merge-global-head,.merge-group-title,.merge-member{display:flex;align-items:center;justify-content:space-between;gap:14px}.merge-global-head h2{margin-bottom:4px}.global-merge-list{display:grid;gap:12px}.merge-group-title{margin-bottom:10px}.merge-group-title>div:first-child,.merge-member>div:first-child{display:flex;flex-direction:column;gap:4px}.merge-group-title>div:first-child>span,.merge-member span{font-size:12px;color:#64748b}.merge-group-actions,.merge-row-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.merge-group-actions form,.merge-row-actions form{margin:0}.merge-member{padding:11px 13px;border:1px solid var(--line);border-radius:10px;margin-top:7px}.merge-member.keep{font-weight:700}@media(max-width:650px){.merge-global-head,.merge-group-title,.merge-member{align-items:flex-start;flex-direction:column}.merge-global-head form,.merge-global-head .btn,.merge-row-actions,.merge-row-actions .btn,.merge-row-actions form,.merge-group-actions,.merge-group-actions .btn,.merge-group-actions form{width:100%}}
+.merge-intro{margin-bottom:10px}.merge-summary-panel{padding-top:14px;padding-bottom:14px}.merge-global-head,.merge-group-title,.merge-member{display:flex;align-items:center;justify-content:space-between;gap:12px}.merge-global-head h2{margin:0 0 3px}.global-merge-list{display:grid;gap:10px}.merge-group{padding-top:14px;padding-bottom:14px}.merge-group-title{margin-bottom:7px}.merge-group-name,.merge-product-link{display:flex;flex-direction:column;gap:2px}.merge-group-name>span,.merge-product-link span{font-size:12px;color:#64748b}.merge-group-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.merge-group-actions form,.merge-member form{margin:0}.merge-member{padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin-top:6px;min-height:42px}.merge-member.keep{font-weight:700}.merge-product-link{flex:1;min-width:0;text-decoration:none;color:inherit;border-radius:6px}.merge-product-link strong{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}.merge-product-link:hover strong{text-decoration-thickness:2px}.merge-btn{padding:6px 10px!important;min-height:32px!important;font-size:13px!important;line-height:1.1!important;white-space:nowrap}.merge-all-btn{padding:7px 12px!important}.merge-group-actions .status{font-size:11px;padding:5px 8px}@media(max-width:650px){.merge-global-head,.merge-group-title{align-items:flex-start;flex-direction:column}.merge-member{gap:8px}.merge-group-actions{width:100%}.merge-global-head form{width:auto}.merge-btn{width:auto!important}.merge-product-link{padding:2px 0}}
 </style>
 {% endblock %}
