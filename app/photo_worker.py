@@ -96,10 +96,33 @@ def process_job(account_id, job_id):
         conn.execute("UPDATE photo_upload_jobs SET status='Processing',started_at=?,error=NULL WHERE id=?",
                      (datetime.now().isoformat(timespec='seconds'), job_id))
         shoot = conn.execute('SELECT * FROM photo_shoot_sessions WHERE id=?', (job['session_id'],)).fetchone()
-        scans = conn.execute('''SELECT s.*,p.item,
-                                (SELECT ib.barcode FROM item_barcodes ib WHERE ib.product_id=p.id ORDER BY ib.id LIMIT 1) AS inventory_id
-                                FROM photo_shoot_scans s JOIN products p ON p.id=s.product_id
-                                WHERE s.session_id=? ORDER BY s.scanned_at''', (job['session_id'],)).fetchall()
+        known_rows = conn.execute('''SELECT s.id AS scan_id,s.scanned_at,s.product_id,p.item,
+                                    (SELECT ib.barcode FROM item_barcodes ib WHERE ib.product_id=p.id ORDER BY ib.id LIMIT 1) AS inventory_id
+                                    FROM photo_shoot_scans s JOIN products p ON p.id=s.product_id
+                                    WHERE s.session_id=?''', (job['session_id'],)).fetchall()
+        pending_rows = conn.execute('''SELECT ps.id AS pending_scan_id,ps.scanned_at,ps.barcode AS inventory_id,
+                                             ps.resolved_product_id,p.item
+                                      FROM photo_shoot_pending_scans ps
+                                      LEFT JOIN products p ON p.id=ps.resolved_product_id
+                                      WHERE ps.session_id=?''', (job['session_id'],)).fetchall()
+        scans = []
+        for row in known_rows:
+            scans.append({
+                'scanned_at': row['scanned_at'],
+                'product_id': row['product_id'],
+                'item': row['item'],
+                'inventory_id': row['inventory_id'],
+                'pending_scan_id': None,
+            })
+        for row in pending_rows:
+            scans.append({
+                'scanned_at': row['scanned_at'],
+                'product_id': row['resolved_product_id'],
+                'item': row['item'] or 'Pending product',
+                'inventory_id': row['inventory_id'],
+                'pending_scan_id': row['pending_scan_id'],
+            })
+        scans.sort(key=lambda s: s['scanned_at'])
         items = conn.execute("SELECT * FROM photo_upload_items WHERE job_id=? AND status='Staged' ORDER BY order_index,id", (job_id,)).fetchall()
 
     if not shoot or not scans:
@@ -139,7 +162,7 @@ def process_job(account_id, job_id):
             for i, (start, scan) in enumerate(markers):
                 end = markers[i + 1][0] if i + 1 < len(markers) else session_end
                 if start <= taken < end:
-                    target = scan
+                    target = dict(scan)
                     break
 
         if not taken or not target:
@@ -156,6 +179,58 @@ def process_job(account_id, job_id):
                 conn.execute("UPDATE photo_upload_items SET status='Unmatched',result_json=? WHERE id=?",
                              (result_json(reason='Unsupported image type'), item['id']))
                 conn.execute("UPDATE photo_upload_jobs SET processed_files=processed_files+1,unmatched_count=unmatched_count+1 WHERE id=?", (job_id,))
+            continue
+
+        if target['product_id'] is None and target.get('pending_scan_id'):
+            # The product may have been created after this job loaded its scan markers.
+            with connect(db_path) as conn:
+                resolved = conn.execute('''SELECT ps.resolved_product_id,p.item
+                                           FROM photo_shoot_pending_scans ps
+                                           LEFT JOIN products p ON p.id=ps.resolved_product_id
+                                           WHERE ps.id=?''', (target['pending_scan_id'],)).fetchone()
+            if resolved and resolved['resolved_product_id']:
+                target['product_id'] = int(resolved['resolved_product_id'])
+                target['item'] = resolved['item'] or target['item']
+
+        if target['product_id'] is None:
+            with connect(db_path) as conn:
+                existing = conn.execute(
+                    'SELECT 1 FROM photo_pending_assets WHERE upload_item_id=? LIMIT 1',
+                    (item['id'],),
+                ).fetchone()
+                if not existing:
+                    conn.execute(
+                        '''INSERT INTO photo_pending_assets
+                           (pending_scan_id,barcode,job_id,upload_item_id,staged_name,original_name,created_at)
+                           VALUES(?,?,?,?,?,?,?)''',
+                        (
+                            target['pending_scan_id'],
+                            target['inventory_id'],
+                            job_id,
+                            item['id'],
+                            item['staged_name'],
+                            item['original_name'],
+                            datetime.now().isoformat(timespec='seconds'),
+                        ),
+                    )
+                conn.execute(
+                    "UPDATE photo_upload_items SET status='PendingProduct',result_json=? WHERE id=?",
+                    (
+                        result_json(
+                            inventory_id=target['inventory_id'],
+                            item='Pending product',
+                            pending_product=True,
+                            taken=taken.isoformat(timespec='seconds'),
+                            timestamp_source=source,
+                        ),
+                        item['id'],
+                    ),
+                )
+                conn.execute(
+                    'UPDATE photo_upload_jobs SET processed_files=processed_files+1 WHERE id=?',
+                    (job_id,),
+                )
+            # Intentionally leave the staged file in place until this barcode is attached to a product.
             continue
 
         filename = f"p{target['product_id']}_shoot{job_id}_{item['id']}.{ext}"
