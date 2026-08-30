@@ -19,6 +19,9 @@ def configure(app, server):
             ).fetchall()
         except sqlite3.Error:
             return {}
+        # Every non-empty custom field participates in the exact-match signature.
+        # This includes Tags (and any future tag-like custom fields), so products
+        # with different tag sets are never offered for merge.
         return {int(row['field_id']): norm(row['value']) for row in rows if norm(row['value'])}
 
     def signature(conn, product):
@@ -28,6 +31,7 @@ def configure(app, server):
             norm(product['secondary_colour']),
             norm(product['pattern']),
             int(product['price_pence'] or 0),
+            norm(product['notes']),
             tuple(sorted(custom_values(conn, product['id']).items())),
         )
 
@@ -120,7 +124,8 @@ def configure(app, server):
                     )
                 moved_photos += len(photos)
 
-                # Keep the surviving product's non-empty custom value. Fill blanks from the duplicate.
+                # Exact matching means custom values (including Tags) already agree,
+                # but retain the existing safe transfer behaviour for missing rows.
                 try:
                     values = conn.execute(
                         'SELECT field_id,value FROM product_custom_values WHERE product_id=?',
