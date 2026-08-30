@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Merge Duplicates · {{ business_name }}{% endblock %}
+{% block content %}
+<div class="page-head"><a class="btn" href="{{ url_for('index') }}">← Inventory</a><h1>Merge duplicate stock</h1></div>
+<section class="panel">
+  <p>This scans the entire active inventory for exact duplicate product records. A match requires the same item name, colours, pattern, price, notes, Tags and every other custom field.</p>
+  <p class="muted">Within each group StockTake keeps the oldest product record (lowest product ID) and moves all barcodes, availability states, photos, sales references and history into it.</p>
+</section>
+{% if groups %}
+<section class="panel">
+  <div class="merge-global-head"><div><h2>{{ groups|length }} duplicate group{{ '' if groups|length == 1 else 's' }} found</h2><p class="muted">Review the groups below, then merge them all in one operation.</p></div>
+  <form method="post" action="{{ url_for('merge_duplicates_global_apply') }}" onsubmit="return confirm('Merge every exact duplicate group shown on this page? This cannot be automatically undone.')"><button class="btn primary big" type="submit">Merge All Exact Duplicates</button></form></div>
+</section>
+<div class="global-merge-list">
+{% for group in groups %}
+<section class="panel merge-group">
+  <div class="merge-group-title"><div><strong>{{ group.target.product.item }}</strong><span>{{ group.count }} matching product records</span></div><span class="status available">Keep #{{ group.target.product.id }}</span></div>
+  <div class="merge-member keep"><strong>#{{ group.target.product.id }} · Keep</strong><span>{{ group.target.barcode_count }} barcodes · {{ group.target.available_count }} available · {{ group.target.photo_count }} photos</span></div>
+  {% for item in group.duplicates %}
+  <div class="merge-member"><strong>#{{ item.product.id }} · Merge into #{{ group.target.product.id }}</strong><span>{{ item.barcode_count }} barcodes · {{ item.available_count }} available · {{ item.photo_count }} photos</span></div>
+  {% endfor %}
+</section>
+{% endfor %}
+</div>
+{% else %}
+<section class="panel"><div class="empty-current"><strong>No exact duplicate products found.</strong><br>Nothing in the current stock matches on all required product fields and Tags.</div></section>
+{% endif %}
+<style>
+.merge-global-head,.merge-group-title,.merge-member{display:flex;align-items:center;justify-content:space-between;gap:14px}.merge-global-head h2{margin-bottom:4px}.global-merge-list{display:grid;gap:12px}.merge-group-title{margin-bottom:10px}.merge-group-title>div{display:flex;flex-direction:column;gap:4px}.merge-group-title>div>span{font-size:12px;color:#64748b}.merge-member{padding:11px 13px;border:1px solid var(--line);border-radius:10px;margin-top:7px}.merge-member.keep{font-weight:700}.merge-member span{color:#64748b;font-size:13px}@media(max-width:650px){.merge-global-head,.merge-group-title,.merge-member{align-items:flex-start;flex-direction:column}.merge-global-head form,.merge-global-head .btn{width:100%}}
+</style>
+{% endblock %}
