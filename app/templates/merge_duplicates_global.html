@@ -4,7 +4,7 @@
 <div class="page-head"><a class="btn" href="{{ url_for('index') }}">← Inventory</a><h1>Merge duplicate stock</h1></div>
 <section class="panel merge-intro">
   <p>This scans the entire active inventory for exact duplicate product records. A match requires the same item name, colours, pattern, price, notes, Tags and every other custom field.</p>
-  <p class="muted">Click a product number on the left to inspect that product before merging. You can merge one match, one group, or every exact duplicate group.</p>
+  <p class="muted">Click a product number or photo to inspect that product before merging. You can merge one match, one group, or every exact duplicate group.</p>
 </section>
 {% if groups %}
 <section class="panel merge-summary-panel">
@@ -19,6 +19,9 @@
     <div class="merge-group-actions"><span class="status available">Keep #{{ group.target.product.id }}</span><form method="post" action="{{ url_for('merge_duplicate_group', product_id=group.target.product.id) }}" onsubmit="return confirm('Merge every duplicate in this group into #{{ group.target.product.id }}?')"><button class="btn primary merge-btn" type="submit">Merge Group</button></form></div>
   </div>
   <div class="merge-member keep">
+    <a class="merge-photo-link" href="{{ url_for('product_detail', product_id=group.target.product.id) }}" aria-label="Open product #{{ group.target.product.id }}">
+      {% if group.target.main_photo %}<img class="merge-thumb" src="{{ url_for('photo_file', filename=group.target.main_photo) }}" alt="{{ group.target.product.item }}">{% else %}<span class="merge-thumb merge-thumb-empty">No photo</span>{% endif %}
+    </a>
     <a class="merge-product-link" href="{{ url_for('product_detail', product_id=group.target.product.id) }}">
       <strong>#{{ group.target.product.id }} · Keep</strong>
       <span>{{ group.target.barcode_count }} barcodes · {{ group.target.available_count }} available · {{ group.target.photo_count }} photos</span>
@@ -26,6 +29,9 @@
   </div>
   {% for item in group.duplicates %}
   <div class="merge-member">
+    <a class="merge-photo-link" href="{{ url_for('product_detail', product_id=item.product.id) }}" aria-label="Open product #{{ item.product.id }}">
+      {% if item.main_photo %}<img class="merge-thumb" src="{{ url_for('photo_file', filename=item.main_photo) }}" alt="{{ item.product.item }}">{% else %}<span class="merge-thumb merge-thumb-empty">No photo</span>{% endif %}
+    </a>
     <a class="merge-product-link" href="{{ url_for('product_detail', product_id=item.product.id) }}">
       <strong>#{{ item.product.id }} · Match for #{{ group.target.product.id }}</strong>
       <span>{{ item.barcode_count }} barcodes · {{ item.available_count }} available · {{ item.photo_count }} photos</span>
@@ -40,6 +46,6 @@
 <section class="panel"><div class="empty-current"><strong>No exact duplicate products found.</strong><br>Nothing in the current stock matches on all required product fields and Tags.</div></section>
 {% endif %}
 <style>
-.merge-intro{margin-bottom:10px}.merge-summary-panel{padding-top:14px;padding-bottom:14px}.merge-global-head,.merge-group-title,.merge-member{display:flex;align-items:center;justify-content:space-between;gap:12px}.merge-global-head h2{margin:0 0 3px}.global-merge-list{display:grid;gap:10px}.merge-group{padding-top:14px;padding-bottom:14px}.merge-group-title{margin-bottom:7px}.merge-group-name,.merge-product-link{display:flex;flex-direction:column;gap:2px}.merge-group-name>span,.merge-product-link span{font-size:12px;color:#64748b}.merge-group-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.merge-group-actions form,.merge-member form{margin:0}.merge-member{padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin-top:6px;min-height:42px}.merge-member.keep{font-weight:700}.merge-product-link{flex:1;min-width:0;text-decoration:none;color:inherit;border-radius:6px}.merge-product-link strong{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}.merge-product-link:hover strong{text-decoration-thickness:2px}.merge-btn{padding:6px 10px!important;min-height:32px!important;font-size:13px!important;line-height:1.1!important;white-space:nowrap}.merge-all-btn{padding:7px 12px!important}.merge-group-actions .status{font-size:11px;padding:5px 8px}@media(max-width:650px){.merge-global-head,.merge-group-title{align-items:flex-start;flex-direction:column}.merge-member{gap:8px}.merge-group-actions{width:100%}.merge-global-head form{width:auto}.merge-btn{width:auto!important}.merge-product-link{padding:2px 0}}
+.merge-intro{margin-bottom:10px}.merge-summary-panel{padding-top:14px;padding-bottom:14px}.merge-global-head,.merge-group-title,.merge-member{display:flex;align-items:center;justify-content:space-between;gap:12px}.merge-global-head h2{margin:0 0 3px}.global-merge-list{display:grid;gap:10px}.merge-group{padding-top:14px;padding-bottom:14px}.merge-group-title{margin-bottom:7px}.merge-group-name,.merge-product-link{display:flex;flex-direction:column;gap:2px}.merge-group-name>span,.merge-product-link span{font-size:12px;color:#64748b}.merge-group-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.merge-group-actions form,.merge-member form{margin:0}.merge-member{padding:7px 10px;border:1px solid var(--line);border-radius:9px;margin-top:6px;min-height:58px}.merge-member.keep{font-weight:700}.merge-product-link{flex:1;min-width:0;text-decoration:none;color:inherit;border-radius:6px}.merge-product-link strong{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}.merge-product-link:hover strong{text-decoration-thickness:2px}.merge-photo-link{display:block;flex:0 0 auto;text-decoration:none}.merge-thumb{display:block;width:52px;height:52px;object-fit:cover;border-radius:7px;border:1px solid var(--line);background:#fff}.merge-thumb-empty{display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;line-height:1.05;color:#64748b;background:rgba(148,163,184,.08)}.merge-btn{padding:6px 10px!important;min-height:32px!important;font-size:13px!important;line-height:1.1!important;white-space:nowrap}.merge-all-btn{padding:7px 12px!important}.merge-group-actions .status{font-size:11px;padding:5px 8px}@media(max-width:650px){.merge-global-head,.merge-group-title{align-items:flex-start;flex-direction:column}.merge-member{gap:8px}.merge-group-actions{width:100%}.merge-global-head form{width:auto}.merge-btn{width:auto!important}.merge-product-link{padding:2px 0}.merge-thumb{width:48px;height:48px}}
 </style>
 {% endblock %}
