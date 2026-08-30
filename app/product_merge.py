@@ -206,6 +206,46 @@ def configure(app, server):
         )
         return redirect(url_for('index'))
 
+    @app.post('/products/merge-duplicates/group/<int:product_id>')
+    def merge_duplicate_group(product_id):
+        with db() as conn:
+            groups = duplicate_groups(conn)
+            group = next((g for g in groups if int(g['target']['product']['id']) == product_id), None)
+            if not group:
+                flash('That duplicate group no longer exists.', 'info')
+                return redirect(url_for('merge_duplicates_global'))
+            source_ids = [int(item['product']['id']) for item in group['duplicates']]
+            try:
+                result = merge_into_target(conn, product_id, source_ids)
+            except (LookupError, ValueError) as exc:
+                conn.rollback()
+                flash(f'Merge stopped safely: {exc} Nothing was merged.', 'error')
+                return redirect(url_for('merge_duplicates_global'))
+        flash(
+            f"Merged {result['sources']} duplicate product record(s) into #{product_id}. "
+            f"{result['barcodes']} barcodes and {result['photos']} photos were preserved.",
+            'success',
+        )
+        return redirect(url_for('merge_duplicates_global'))
+
+    @app.post('/products/merge-duplicates/<int:product_id>/<int:source_id>')
+    def merge_duplicate_single(product_id, source_id):
+        with db() as conn:
+            try:
+                result = merge_into_target(conn, product_id, [source_id])
+            except LookupError:
+                abort(404)
+            except ValueError as exc:
+                conn.rollback()
+                flash(f'Merge stopped safely: {exc} Nothing was merged.', 'error')
+                return redirect(url_for('merge_duplicates_global'))
+        flash(
+            f"Merged product #{source_id} into #{product_id}. "
+            f"{result['barcodes']} barcodes and {result['photos']} photos were preserved.",
+            'success',
+        )
+        return redirect(url_for('merge_duplicates_global'))
+
     @app.get('/product/<int:product_id>/merge')
     def merge_product_picker(product_id):
         with db() as conn:
