@@ -100,9 +100,11 @@ def process_job(account_id, job_id):
                                     (SELECT ib.barcode FROM item_barcodes ib WHERE ib.product_id=p.id ORDER BY ib.id LIMIT 1) AS inventory_id
                                     FROM photo_shoot_scans s JOIN products p ON p.id=s.product_id
                                     WHERE s.session_id=?''', (job['session_id'],)).fetchall()
-        pending_rows = conn.execute('''SELECT id AS pending_scan_id,scanned_at,barcode AS inventory_id
-                                      FROM photo_shoot_pending_scans
-                                      WHERE session_id=?''', (job['session_id'],)).fetchall()
+        pending_rows = conn.execute('''SELECT ps.id AS pending_scan_id,ps.scanned_at,ps.barcode AS inventory_id,
+                                             ps.resolved_product_id,p.item
+                                      FROM photo_shoot_pending_scans ps
+                                      LEFT JOIN products p ON p.id=ps.resolved_product_id
+                                      WHERE ps.session_id=?''', (job['session_id'],)).fetchall()
         scans = []
         for row in known_rows:
             scans.append({
@@ -115,8 +117,8 @@ def process_job(account_id, job_id):
         for row in pending_rows:
             scans.append({
                 'scanned_at': row['scanned_at'],
-                'product_id': None,
-                'item': 'Pending product',
+                'product_id': row['resolved_product_id'],
+                'item': row['item'] or 'Pending product',
                 'inventory_id': row['inventory_id'],
                 'pending_scan_id': row['pending_scan_id'],
             })
@@ -160,7 +162,7 @@ def process_job(account_id, job_id):
             for i, (start, scan) in enumerate(markers):
                 end = markers[i + 1][0] if i + 1 < len(markers) else session_end
                 if start <= taken < end:
-                    target = scan
+                    target = dict(scan)
                     break
 
         if not taken or not target:
@@ -178,6 +180,17 @@ def process_job(account_id, job_id):
                              (result_json(reason='Unsupported image type'), item['id']))
                 conn.execute("UPDATE photo_upload_jobs SET processed_files=processed_files+1,unmatched_count=unmatched_count+1 WHERE id=?", (job_id,))
             continue
+
+        if target['product_id'] is None and target.get('pending_scan_id'):
+            # The product may have been created after this job loaded its scan markers.
+            with connect(db_path) as conn:
+                resolved = conn.execute('''SELECT ps.resolved_product_id,p.item
+                                           FROM photo_shoot_pending_scans ps
+                                           LEFT JOIN products p ON p.id=ps.resolved_product_id
+                                           WHERE ps.id=?''', (target['pending_scan_id'],)).fetchone()
+            if resolved and resolved['resolved_product_id']:
+                target['product_id'] = int(resolved['resolved_product_id'])
+                target['item'] = resolved['item'] or target['item']
 
         if target['product_id'] is None:
             with connect(db_path) as conn:
