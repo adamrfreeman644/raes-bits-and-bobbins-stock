@@ -8,7 +8,7 @@
     <strong>#{{ target_info.product.id }} · {{ target_info.product.item }}</strong>
     <span>{{ target_info.barcode_count }} barcodes · {{ target_info.available_count }} available · {{ target_info.photo_count }} photos</span>
   </div>
-  <p class="muted">This product's description, price and existing field values stay as the master record. Matching duplicates contribute their barcodes, stock states, photos and history.</p>
+  <p class="muted">This product stays as the master record. A duplicate is only eligible when its item name, colours, pattern, price, notes, Tags and every other custom field match exactly. Matching duplicates contribute their barcodes, stock states, photos and history.</p>
 </section>
 <section class="panel">
   <h2>Exact matches</h2>
@@ -25,7 +25,7 @@
     <div class="form-actions"><button class="btn primary big" type="submit">Merge Selected Products</button></div>
   </form>
   {% else %}
-  <div class="empty-current">No exact duplicate products were found. Products must match on item name, colours, pattern, price and custom-field values before they can be merged.</div>
+  <div class="empty-current">No exact duplicate products were found. Products must have the same item name, colours, pattern, price, notes, Tags and every other custom-field value before they can be merged.</div>
   {% endif %}
 </section>
 <style>
