@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Merge Products · {{ target_info.product.item }}{% endblock %}
+{% block content %}
+<div class="page-head"><a class="btn" href="{{ url_for('product_detail', product_id=target_info.product.id) }}">← Product</a><h1>Merge identical products</h1></div>
+<section class="panel">
+  <h2>Keep this product</h2>
+  <div class="merge-keep-card">
+    <strong>#{{ target_info.product.id }} · {{ target_info.product.item }}</strong>
+    <span>{{ target_info.barcode_count }} barcodes · {{ target_info.available_count }} available · {{ target_info.photo_count }} photos</span>
+  </div>
+  <p class="muted">This product's description, price and existing field values stay as the master record. Matching duplicates contribute their barcodes, stock states, photos and history.</p>
+</section>
+<section class="panel">
+  <h2>Exact matches</h2>
+  {% if exact_matches %}
+  <form method="post" action="{{ url_for('merge_products', product_id=target_info.product.id) }}" onsubmit="return confirm('Merge the selected duplicate products into #{{ target_info.product.id }}? This cannot be automatically undone.')">
+    <div class="merge-list">
+      {% for item in exact_matches %}
+      <label class="merge-row">
+        <input type="checkbox" name="source_id" value="{{ item.product.id }}">
+        <span><strong>#{{ item.product.id }} · {{ item.product.item }}</strong><small>{{ item.barcode_count }} barcodes · {{ item.available_count }} available · {{ item.photo_count }} photos</small></span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="form-actions"><button class="btn primary big" type="submit">Merge Selected Products</button></div>
+  </form>
+  {% else %}
+  <div class="empty-current">No exact duplicate products were found. Products must match on item name, colours, pattern, price and custom-field values before they can be merged.</div>
+  {% endif %}
+</section>
+<style>
+.merge-keep-card,.merge-row{display:flex;justify-content:space-between;gap:18px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:#f8fafc}.merge-keep-card span,.merge-row small{color:#64748b}.merge-list{display:grid;gap:9px}.merge-row{justify-content:flex-start;cursor:pointer}.merge-row input{width:20px;height:20px;flex:0 0 auto}.merge-row span{display:flex;flex-direction:column;gap:4px}@media(max-width:600px){.merge-keep-card{align-items:flex-start;flex-direction:column}}
+</style>
+{% endblock %}
